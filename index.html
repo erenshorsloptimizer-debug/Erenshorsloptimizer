@@ -76,8 +76,79 @@
       <div class="panel-header">
         <h2>Optimize</h2>
       </div>
-      <div class="panel-body" style="display:flex;flex-wrap:wrap;gap:1.5rem">
-        <button class="optimize-btn" onclick="optimizeAndScroll()">⚔ Find Best Loadout ⚔</button>
+      <div class="panel-body">
+        <div style="display:flex;flex-wrap:wrap;gap:1.5rem;margin-bottom:1.5rem;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:.35rem">
+            <label style="font-size:.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Min Gear
+              Level</label>
+            <input type="number" id="filter-level-min" placeholder="1" style="width:70px" onchange="onGearLevelChange()"
+              value="1">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.35rem">
+            <label style="font-size:.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Max Gear
+              Level</label>
+            <input type="number" id="filter-level" placeholder="35" style="width:70px" onchange="onGearLevelChange()"
+              value="35">
+          </div>
+          <button class="optimize-btn" onclick="optimizeAndScroll()">⚔ Find Best Loadout ⚔</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+          <div style="display:flex;flex-direction:column;gap:.5rem;width:100%">
+            <label style="font-size:.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Weapon
+              Preference</label>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="no2h-wrap">
+              <button class="btn btn-ghost" id="wpref-any" onclick="setWeaponPref('any')"
+                style="font-size:.7rem;padding:.4rem .8rem">Any Weapons</button>
+              <button class="btn btn-ghost" id="wpref-1h" onclick="setWeaponPref('1h')"
+                style="font-size:.7rem;padding:.4rem .8rem">1H + Shield</button>
+              <button class="btn btn-ghost" id="wpref-2h" onclick="setWeaponPref('2h')"
+                style="font-size:.7rem;padding:.4rem .8rem">2H Only</button>
+            </div>
+            <div style="font-size:.7rem;color:var(--text-dim);font-style:italic" id="wpref-note">Optimizer considers all
+              weapons</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gear database panel -->
+    <div class="panel" style="margin-bottom:2rem">
+      <div class="panel-header">
+        <h2>Gear Database</h2>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-ghost" style="font-size:.7rem;padding:.25rem .7rem" onclick="loadWikiGear()">Load Wiki
+            Gear</button>
+          <button class="btn btn-ghost" style="font-size:.7rem;padding:.25rem .7rem" onclick="clearAllGear()">Clear
+            All</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="filter-row" style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem">
+          <input id="filter-name" placeholder="name…" oninput="renderGearList()" style="flex:1;min-width:120px">
+          <select id="filter-slot" onchange="renderGearList()" style="width:110px">
+            <option value="">any slot</option>
+            <option>Head</option>
+            <option>Neck</option>
+            <option>Chest</option>
+            <option>Back</option>
+            <option>Arms</option>
+            <option>Waist</option>
+            <option>Legs</option>
+            <option>Feet</option>
+            <option>Hands</option>
+            <option>Wrist</option>
+            <option>Ring</option>
+            <option>Primary</option>
+            <option>Secondary</option>
+            <option>Aura</option>
+            <option>Charm</option>
+          </select>
+          <input type="number" id="filter-level-min" placeholder="min lvl" style="width:70px"
+            oninput="renderGearList()">
+          <input type="number" id="filter-level" placeholder="max lvl" style="width:70px" oninput="renderGearList()">
+        </div>
+        <div id="gear-count" style="margin-bottom:.5rem;color:var(--text-dim)"></div>
+        <div id="gear-list" class="gear-list"></div>
       </div>
     </div>
 
@@ -94,6 +165,122 @@
   <script src="gear-data.js"></script>
 
   <script src="script.js"></script>
+
+  <!-- Custom Item Panel -->
+  <div style="max-width:900px;margin:1.5rem auto;padding:0 1rem">
+    <div class="panel">
+      <div class="panel-header" style="cursor:pointer;user-select:none" onclick="toggleAddItem()">
+        <h2>Add Custom Item</h2>
+        <span id="add-item-chevron"
+          style="font-size:.75rem;color:var(--text-dim);transition:transform .25s;display:inline-block">▶</span>
+      </div>
+      <div id="add-item-body" style="display:none">
+        <div class="panel-body">
+          <p class="note">Look up any Erenshor item by name and AI will fill in the stats.</p>
+          <div class="ai-input-row">
+            <input type="text" id="ai-item-name" placeholder="Item name…" onkeydown="if(event.key==='Enter')aiLookup()">
+            <button class="btn btn-blue" onclick="aiLookup()" id="lookup-btn">✦ Lookup</button>
+          </div>
+          <div class="ai-status" id="ai-status"></div>
+          <hr class="div">
+          <div class="form-grid">
+            <div class="form-field" style="grid-column:1/-1"><label>Item Name</label><input type="text" id="item-name"
+                placeholder="Name"></div>
+            <div class="form-field"><label>Slot</label>
+              <select id="item-slot">
+                <option>Head</option>
+                <option>Neck</option>
+                <option>Chest</option>
+                <option>Back</option>
+                <option>Arms</option>
+                <option>Waist</option>
+                <option>Legs</option>
+                <option>Feet</option>
+                <option>Hands</option>
+                <option>Wrist</option>
+                <option>Ring</option>
+                <option>Primary</option>
+                <option>Secondary</option>
+                <option>Aura</option>
+              </select>
+            </div>
+            <div class="form-field"><label>Level Req</label><input type="number" id="item-level" placeholder="1" min="1"
+                max="100"></div>
+            <div id="stat-inputs" style="display:contents"></div>
+            <div class="btn-row" style="grid-column:1/-1">
+              <button class="btn btn-gold" onclick="addItemManual()">+ Add Item</button>
+              <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Section -->
+  <div style="max-width:900px;margin:1.5rem auto;padding:0 1rem">
+    <div class="panel" style="border-color:var(--border)">
+      <div class="panel-header" id="notes-header"
+        style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
+        <h2 style="font-size:.8rem;letter-spacing:.1em;color:var(--text-dim)">📋 NOTES &amp; DE-SLOPIFICATION</h2>
+        <span class="chevron" style="font-size:.75rem;color:var(--text-dim)">▶ show</span>
+      </div>
+      <div class="notes-body"
+        style="display:none;padding:1rem 1.25rem;font-size:.82rem;line-height:1.7;color:var(--text-dim)">
+        <p style="margin:0 0 1rem">
+          <strong style="color:var(--text-bright)">What Gear Score Means</strong> — Each item's score is a single number
+          representing how much that item contributes to your character's effectiveness <em>for your current class and
+            stat priorities</em>. It is not a universal item rating — the same piece can score very differently for a
+          Reaver versus an Arcanist. Higher score means the item does more work for your build. The score breakdown
+          tooltip (hover any slot) shows exactly which stats are driving the number.
+          <strong style="color:var(--text-bright)">What it doesn't tell you:</strong> score doesn't account for content
+          context (a resistance-heavy piece may be worthless in one zone and essential in another), set bonuses if any
+          exist, or personal playstyle preferences. Treat it as a strong starting point for comparison, not a final
+          verdict.
+        </p>
+        <p style="margin:0 0 1rem">
+          <strong style="color:var(--text-bright)">How the Score is Calculated</strong> — Scoring uses the actual game
+          formulas from <em>Stats.cs</em>, weighted by your stat priority tiers (Core 10 / Primary 7 / Secondary 4 /
+          Ignore 0). Each class has different ScaleMod values baked in — STR is worth more to a Reaver (StrScaleMod 25)
+          than an Arcanist (StrScaleMod 3) even at identical tier settings, because the game itself amplifies it less
+          for casters. The formulas model: melee damage (STR × StrScaleMod), hit chance and crit (DEX), AC mitigation
+          (AGI scales with level — much more valuable at level 35 than level 10), max HP (END is quadratic with level),
+          mana pool and regen (INT and WIS), and elemental resistances (CHA). Haste uses diminishing returns near the
+          60% game cap. Armor Rating scores as <em>AC × MitigationBonus²</em>, so it rewards classes with high
+          mitigation (Paladin 1.15×) more than cloth wearers. Worn and aura effects score at full value; proc effects at
+          half value. <strong style="color:var(--text-bright)">Blessed</strong> items multiply all stats ×1.5 and add +1
+          Resonance; <strong style="color:var(--text-bright)">Godly</strong> items multiply ×2 and add +2 Resonance.
+        </p>
+        <p style="margin:0 0 1rem">
+          <strong style="color:var(--text-bright)">Weapon DPS</strong> — Weapons are scored using the actual damage
+          formula from <em>Stats.cs</em>.
+          Melee weapons use the game's formula factor <em>(1 + (dmg−1) × 0.4) / delay</em>, weighted by your STR
+          priority plus half your DEX priority; two-handed weapons get an additional 10% bonus on the STR term.
+          Bows use flat <em>dmg / delay</em> weighted by DEX only — the source confirms bows have no STR or DEX scaling.
+          Wands use flat <em>dmg / delay</em> weighted by INT at a reduced constant, since wand auto-attacks are a
+          secondary damage source for casters.
+          The score contribution is visible in the breakdown tooltip when hovering a weapon slot.
+          <strong style="color:var(--text-bright)">What this doesn't capture:</strong> proc effects on weapons (e.g.
+          on-hit spells), dual-wield off-hand hit probability (which is level-dependent and probabilistic), or the
+          interaction between haste and attack delay — so treat weapon scores as a useful signal, not the full picture
+          for weapon comparison.
+        </p>
+        <p style="margin:0">
+          <strong style="color:var(--text-bright)">Charms</strong> — Charms are included as a 15th gear slot.
+          Unlike other slots, charms don't grant flat stats — they grant <em>proficiency bonuses</em>, which amplify a
+          corresponding primary stat by 1% per point (e.g. Physicality amplifies STR, Finesse amplifies DEX).
+          The optimizer scores charm proficiency bonuses by estimating how much each bonus point is worth given your
+          current gear's stat totals and your stat priority weights — a Physicality bonus is worth more if you have lots
+          of STR gear and STR is a Primary priority.
+          Charm bonuses appear as a blue ✦ column in the Proficiency panel.
+          <strong style="color:var(--text-bright)">Charm of the Shield</strong> is a special case: its Mitigation
+          proficiency has no direct stat mapping, so it scores via your Armor Rating weight as a proxy — it will rank
+          highly for tank builds (Paladin, Reaver) with Armor Rating toggled on.
+
+        </p>
+      </div>
+    </div>
+  </div>
 
 </body>
 
