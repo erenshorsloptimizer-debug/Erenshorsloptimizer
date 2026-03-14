@@ -5,27 +5,17 @@ import {
     showMessage,
     renderClassBar,
     renderClassDescription,
-    renderStatPriorities,
     renderProficiencies,
     renderAscensions,
     toggleAscensionsPanel,
-    renderGearList,
-    toggleGearDatabase,
-    renderCurrentGear,
     renderLoadoutBuilder,
+    renderCurrentGear,          // <-- added
+    renderStatWeightEditors      // <-- added
 } from './uiRenderer.js';
-
-import {
-    getState,
-    setClass,
-    setFilterMinLevel,
-    setFilterMaxLevel,
-    setFilterSearch,
-    setFilterSlot,
-    getFilters
-} from './characterState.js';
-
+import { getState, setClass } from './characterState.js';
 import AscendencyData from './Ascendency_Data.js';
+import OptimizerEngine from './OptimizerEngine.js';
+import { gearData } from './gear-data-with-effects.js';
 
 // ==================== DATA ====================
 const ERENSHOR_CLASSES = [
@@ -59,21 +49,145 @@ const CLASS_PROFICIENCIES = {
     Arcanist: { physicality: 3, hardiness: 10, finesse: 3, defense: 3, arcanism: 14, restoration: 9, mind: 10 }
 };
 
-const CLASS_ID_TO_NAME = {
-    1: "Windblade",
-    2: "Arcanist",
-    3: "Paladin",
-    4: "Reaver",
-    5: "Druid",
-    6: "Stormcaller"
+// Current user-defined stat weights (will be initialized from class defaults)
+let currentStatWeights = {};
+let lastOptimizerResult = null;
+window.computeLoadoutScore = function (loadout, tier, statWeights) {
+    let total = 0;
+    for (let slot in loadout) {
+        if (loadout[slot]) {
+            total += OptimizerEngine.scoreItem(loadout[slot], tier, statWeights);
+        }
+    }
+    return total;
 };
 
-// ==================== GLOBAL VARIABLES ====================
-let gearData = [];  // Will be populated dynamically
+// ==================== INITIALIZATION ====================
+console.log("🚀 Sloptimizer initializing with modules...");
+console.log(`✅ Loaded ${gearData.length} gear items`);
 
-// ==================== FUNCTIONS ====================
+function setupEventListeners() {
+    document.addEventListener('classSelected', (event) => {
+        const className = event.detail.className;
+        handleClassSelection(className);
+    });
+}
 
-// Get ascensions for the current class
+// Handle class selection
+function handleClassSelection(className) {
+    console.log(`Class selected: ${className}`);
+
+    setClass(className);
+    const currentState = getState();
+
+    renderClassBar(ERENSHOR_CLASSES, className);
+    renderClassDescription(CLASS_DESCRIPTIONS[className] || 'No description available');
+
+    // Initialize current stat weights from class defaults
+    const defaultWeights = CLASS_STAT_WEIGHTS[className] || {};
+    currentStatWeights = { ...defaultWeights };
+
+    // Render editable stat weight panel
+    renderStatWeightEditors(currentStatWeights, (newWeights) => {
+        currentStatWeights = newWeights;
+        console.log('Stat weights updated:', currentStatWeights);
+    });
+
+    renderProficiencies(CLASS_PROFICIENCIES[className] || {});
+    const ascensions = getAscensionsForClass(className);
+    renderAscensions(ascensions);
+
+    showMessage(`Switched to ${className}`, true);
+}
+
+// Reset stat weights to class defaults
+window.resetStatWeights = function () {
+    const state = getState();
+    const className = state.className;
+    const defaultWeights = CLASS_STAT_WEIGHTS[className] || {};
+    currentStatWeights = { ...defaultWeights };
+    renderStatWeightEditors(currentStatWeights, (newWeights) => {
+        currentStatWeights = newWeights;
+    });
+    showMessage('Stat weights reset to class defaults', true);
+};
+
+// Find best loadout (calls OptimizerEngine)
+function findBestLoadout() {
+    console.log("Finding best loadout via OptimizerEngine...");
+
+    const state = getState();
+    const className = state.className;
+    const charLevel = state.level;
+
+    const levelMin = parseInt(document.getElementById('filter-level-min').value) || 1;
+    const levelMax = parseInt(document.getElementById('filter-level').value) || 35;
+
+    let tier = 'base';
+    if (document.getElementById('tier-blessed').classList.contains('active')) {
+        tier = 'blessed';
+    } else if (document.getElementById('tier-double').classList.contains('active')) {
+        tier = 'godly';
+    }
+
+    let weaponPref = 'any';
+    if (document.getElementById('wpref-1h')?.classList.contains('active')) {
+        weaponPref = '1h';
+    } else if (document.getElementById('wpref-2h')?.classList.contains('active')) {
+        weaponPref = '2h';
+    }
+
+    const statWeights = currentStatWeights;
+
+    console.log(`Optimizing for ${className}, level ${charLevel}, gear level ${levelMin}-${levelMax}, tier: ${tier}, weapon pref: ${weaponPref}`);
+    console.log('Using stat weights:', statWeights);
+
+    const result = OptimizerEngine.findBestLoadout({
+        className,
+        charLevel,
+        levelMin,
+        levelMax,
+        tier,
+        weaponPref,
+        statWeights
+    });
+
+    lastOptimizerResult = result;
+
+    // ✅ Correct: pass four arguments
+    renderLoadoutBuilder(result.bestLoadout, result.candidates, tier, statWeights);
+
+    showMessage('Loadout found!', true);
+
+    return result.bestLoadout;
+}
+
+// Make optimizeAndScroll globally available
+window.optimizeAndScroll = function () {
+    findBestLoadout();
+    const resultsEl = document.getElementById('results');
+    if (resultsEl) {
+        resultsEl.scrollIntoView({ behavior: 'smooth' });
+    }
+};
+
+function debugAscensions() {
+    console.log("=== ASCENSION DEBUG ===");
+    console.log("AscendencyData length:", AscendencyData?.length);
+    console.log("First item:", AscendencyData?.[0]);
+
+    const byClass = {};
+    AscendencyData.forEach(asc => {
+        const classId = asc.usedBy;
+        if (!byClass[classId]) {
+            byClass[classId] = [];
+        }
+        byClass[classId].push(asc.name);
+    });
+
+    console.log("Grouped by class ID:", byClass);
+}
+
 function getAscensionsForClass(className) {
     const classIdMap = {
         "Windblade": 1,
@@ -85,155 +199,33 @@ function getAscensionsForClass(className) {
     };
 
     const classId = classIdMap[className];
-    if (!classId) return [];
-
-    const classAscensions = AscendencyData.filter(asc => asc.usedBy === classId);
-    const generalAscensions = AscendencyData.filter(asc => asc.usedBy === 0);
-
-    return [...classAscensions, ...generalAscensions];
-}
-
-// Load gear data with cache busting
-async function loadGearData() {
-    try {
-        const module = await import(`./gear-data.js?v=${Date.now()}`);
-        gearData = module.gearData;
-        console.log(`✅ Loaded ${gearData.length} gear items`);
-        return true;
-    } catch (error) {
-        console.error("Failed to load gear data:", error);
-        showMessage("Failed to load gear database", false);
-        return false;
-    }
-}
-setTimeout(() => {
-    // Test current gear
-    const testGear = {
-        head: { name: "Test Helm", stats: { str: 5, dex: 3 } },
-        chest: { name: "Test Chest", stats: { str: 8, end: 5 } },
-        primary: { name: "Test Sword", stats: { str: 12, dex: 4 } },
-        ring1: { name: "Test Ring", stats: { int: 6, wis: 3 } }
-    };
-    renderCurrentGear(testGear);
-
-    // Test loadout
-    const testLoadout = {
-        head: { name: "Optimized Helm", stats: { str: 8, dex: 5 } },
-        chest: { name: "Optimized Chest", stats: { str: 12, end: 8 } },
-        primary: { name: "Optimized Sword", stats: { str: 18, dex: 6 } },
-        ring1: { name: "Optimized Ring", stats: { int: 10, wis: 5 } }
-    };
-    renderLoadoutBuilder(testLoadout, 1250.5);
-}, 500);
-
-// Filter gear based on current settings
-function filterGearForCurrentClass() {
-    if (!gearData || gearData.length === 0) {
-        console.log('⏳ Gear data not loaded yet');
+    if (!classId) {
+        console.log(`No class ID mapping for ${className}`);
         return [];
     }
 
-    const currentState = getState();
-    const filters = getFilters();
-    const currentClass = currentState.className;
+    const classAscensions = AscendencyData.filter(asc => asc.usedBy === classId);
+    const generalAscensions = AscendencyData.filter(asc => asc.usedBy === 0);
+    const allAscensions = [...classAscensions, ...generalAscensions];
 
-    const filtered = gearData.filter(item => {
-        if (!item.classes || !item.classes.includes(currentClass)) return false;
-        if (item.lvl < filters.minLevel || item.lvl > filters.maxLevel) return false;
-        if (filters.searchText && !item.name.toLowerCase().includes(filters.searchText)) return false;
-        if (filters.slot !== 'All' && filters.slot !== '' && item.slot !== filters.slot) return false;
-        return true;
-    });
+    console.log(`Found ${classAscensions.length} class-specific + ${generalAscensions.length} general ascensions for ${className}`);
+    console.log(`Total: ${allAscensions.length} ascensions`);
 
-    return filtered;
+    return allAscensions;
 }
 
-// Handle filter changes
-function onFilterChange() {
-    if (!gearData || gearData.length === 0) return;
-    const filteredGear = filterGearForCurrentClass();
-    renderGearList(filteredGear);
-}
-
-// Set up filter listeners
-function setupFilterListeners() {
-    const minInput = document.getElementById('filter-level-min');
-    const maxInput = document.getElementById('filter-level');
-    const searchInput = document.getElementById('filter-name');
-    const slotSelect = document.getElementById('filter-slot');
-
-    if (minInput) minInput.addEventListener('input', (e) => {
-        setFilterMinLevel(parseInt(e.target.value) || 1);
-        onFilterChange();
-    });
-
-    if (maxInput) maxInput.addEventListener('input', (e) => {
-        setFilterMaxLevel(parseInt(e.target.value) || 35);
-        onFilterChange();
-    });
-
-    if (searchInput) searchInput.addEventListener('input', (e) => {
-        setFilterSearch(e.target.value);
-        onFilterChange();
-    });
-
-    if (slotSelect) slotSelect.addEventListener('change', (e) => {
-        setFilterSlot(e.target.value);
-        onFilterChange();
-    });
-}
-
-// Set up event listeners
-function setupEventListeners() {
-    document.addEventListener('classSelected', (event) => {
-        handleClassSelection(event.detail.className);
-    });
-}
-
-// Handle class selection
-function handleClassSelection(className) {
-    console.log(`Class selected: ${className}`);
-
-    setClass(className);
-    const currentState = getState();
-
-    // Update ALL UI components
-    renderClassBar(ERENSHOR_CLASSES, className);
-    renderClassDescription(CLASS_DESCRIPTIONS[className] || 'No description available');
-    renderStatPriorities(CLASS_STAT_WEIGHTS[className] || {});
-    renderProficiencies(CLASS_PROFICIENCIES[className] || {});
-    renderAscensions(getAscensionsForClass(className));
-
-    // Update gear if loaded
-    if (gearData && gearData.length > 0) {
-        const filteredGear = filterGearForCurrentClass();
-        renderGearList(filteredGear);
-    }
-
-    showMessage(`Switched to ${className}`, true);
-}
-
-// ==================== INITIALIZATION ====================
-console.log("🚀 Sloptimizer initializing with modules...");
-
-async function initializeApp() {
-    console.log("Initializing app...");
-
-    setupEventListeners();
-    setupFilterListeners();
-
-    await loadGearData();
-    handleClassSelection('Paladin');
-
-    showMessage("✅ Sloptimizer fully loaded!", true);
-}
-
-// Start the app
-initializeApp();
-
-// Debug info
 console.log("🔍 DEBUG: Checking initialization...");
 console.log("- DOM ready?", document.readyState);
 console.log("- Class bar element:", document.getElementById('class-bar'));
 console.log("- ERENSHOR_CLASSES:", ERENSHOR_CLASSES);
 console.log("- renderClassBar type:", typeof renderClassBar);
+
+// ==================== START THE APP ====================
+function initializeApp() {
+    console.log("Initializing app...");
+
+    setupEventListeners();
+    handleClassSelection('Paladin');
+}
+
+initializeApp();

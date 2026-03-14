@@ -55,9 +55,7 @@ function renderClassBar(classes, activeClass) {
         button.setAttribute('data-class', className);
         button.textContent = className;
 
-        // Add click handler
         button.addEventListener('click', () => {
-            // We'll handle this in script.js by dispatching an event
             document.dispatchEvent(new CustomEvent('classSelected', {
                 detail: { className: className }
             }));
@@ -73,101 +71,7 @@ function renderClassDescription(description) {
         descElement.textContent = description || 'Select a class to begin';
     }
 }
-function renderStatPriorities(statWeights) {
-    console.log("renderStatPriorities called with:", statWeights);
 
-    const panel = getElement('stat-tier-panel');
-    if (!panel) {
-        showMessage("Couldn't find stat-tier-panel element", false);
-        return;
-    }
-
-    panel.innerHTML = '';
-
-    // If no stat weights yet, show a message
-    if (!statWeights || Object.keys(statWeights).length === 0) {
-        panel.innerHTML = '<p class="note">Select a class to see stat priorities</p>';
-        return;
-    }
-
-    // Convert weights to tiers
-    // Find the highest weight value to base tiers on
-    const weights = Object.values(statWeights);
-    const maxWeight = Math.max(...weights);
-
-    // Create tier labels based on percentage of max
-    const tiers = [
-        { label: 'S+', threshold: 0.95 },  // 95%+ of max
-        { label: 'S', threshold: 0.85 },   // 85-94%
-        { label: 'A', threshold: 0.70 },   // 70-84%
-        { label: 'B', threshold: 0.50 },   // 50-69%
-        { label: 'C', threshold: 0.30 },   // 30-49%
-        { label: 'D', threshold: 0.15 },   // 15-29%
-        { label: 'F', threshold: 0 }       // below 15%
-    ];
-
-    // Group stats by tier
-    const statsByTier = {};
-    tiers.forEach(tier => {
-        statsByTier[tier.label] = [];
-    });
-
-    // Sort each stat into a tier
-    Object.entries(statWeights).forEach(([statName, weight]) => {
-        const ratio = weight / maxWeight;
-
-        for (const tier of tiers) {
-            if (ratio >= tier.threshold) {
-                statsByTier[tier.label].push(statName);
-                break;
-            }
-        }
-    });
-
-    // Render each tier that has stats
-    tiers.forEach(tier => {
-        const stats = statsByTier[tier.label];
-        if (stats.length > 0) {
-            const tierDiv = document.createElement('div');
-            tierDiv.className = 'stat-tier';
-
-            // Format stat names nicely
-            const formattedStats = stats.map(stat => {
-                // Convert "intelScaling" to "INT", "critChance" to "CRIT", etc.
-                const statMap = {
-                    'str': 'STR',
-                    'dex': 'DEX',
-                    'agi': 'AGI',
-                    'end': 'END',
-                    'int': 'INT',
-                    'intelScaling': 'INT',
-                    'wis': 'WIS',
-                    'cha': 'CHA',
-                    'res': 'RES',
-                    'haste': 'HASTE',
-                    'armor': 'ARMOR',
-                    'crit': 'CRIT',
-                    'critChance': 'CRIT',
-                    'critDamage': 'CRIT DMG',
-                    'physicality': 'PHYS',
-                    'hardiness': 'HARDY',
-                    'finesse': 'FINE',
-                    'defense': 'DEF',
-                    'arcanism': 'ARC',
-                    'restoration': 'REST',
-                    'mind': 'MIND'
-                };
-                return statMap[stat.toLowerCase()] || stat.toUpperCase();
-            }).join(' · ');
-
-            tierDiv.innerHTML = `
-                <span class="tier-label">${tier.label}</span>
-                <span class="tier-stats">${formattedStats}</span>
-            `;
-            panel.appendChild(tierDiv);
-        }
-    });
-}
 function renderProficiencies(proficiencies) {
     console.log("renderProficiencies called with:", proficiencies);
 
@@ -184,12 +88,10 @@ function renderProficiencies(proficiencies) {
         return;
     }
 
-    // Create a table
     const tableElem = document.createElement('table');
     tableElem.style.width = '100%';
     tableElem.style.borderCollapse = 'collapse';
 
-    // Add header
     tableElem.innerHTML = `
         <thead>
             <tr style="border-bottom:1px solid var(--border);">
@@ -204,7 +106,6 @@ function renderProficiencies(proficiencies) {
 
     const tbody = tableElem.querySelector('tbody');
 
-    // Format proficiency names nicely
     const profNames = {
         physicality: 'Physicality',
         hardiness: 'Hardiness',
@@ -215,23 +116,20 @@ function renderProficiencies(proficiencies) {
         mind: 'Mind'
     };
 
-    // Add each proficiency row
+    const boosts = {
+        physicality: 'STR-based damage',
+        hardiness: 'END (HP & mitigation)',
+        finesse: 'DEX/AGI (crit/avoid)',
+        defense: 'Armor & block',
+        arcanism: 'INT (spell power)',
+        restoration: 'Healing & mana',
+        mind: 'WIS/CHA (utility)'
+    };
+
     Object.entries(proficiencies).forEach(([prof, value]) => {
-        if (value > 0) {  // Only show proficiencies with points
+        if (value > 0) {
             const row = document.createElement('tr');
             row.style.borderBottom = '1px solid var(--border-light)';
-
-            // Determine what stat this proficiency boosts
-            const boosts = {
-                physicality: 'STR-based damage',
-                hardiness: 'END (HP & mitigation)',
-                finesse: 'DEX/AGI (crit/avoid)',
-                defense: 'Armor & block',
-                arcanism: 'INT (spell power)',
-                restoration: 'Healing & mana',
-                mind: 'WIS/CHA (utility)'
-            };
-
             row.innerHTML = `
                 <td style="padding:8px 4px; color:var(--text-bright)">${profNames[prof] || prof}</td>
                 <td style="padding:8px 4px; text-align:center; font-weight:bold;">${value}</td>
@@ -243,6 +141,7 @@ function renderProficiencies(proficiencies) {
 
     table.appendChild(tableElem);
 }
+
 function toggleProficienciesPanel() {
     const panelBody = getElement('prof-panel-body');
     const chevron = getElement('prof-panel-chevron');
@@ -259,6 +158,7 @@ function toggleProficienciesPanel() {
         chevron.textContent = '▼';
     }
 }
+
 function renderAscensions(ascensions, selectedAscensions = []) {
     console.log("renderAscensions called with:", ascensions?.length || 0, "ascensions");
 
@@ -275,13 +175,11 @@ function renderAscensions(ascensions, selectedAscensions = []) {
         return;
     }
 
-    // Create a grid of ascension cards
     ascensions.forEach(asc => {
         const card = document.createElement('div');
         card.className = 'asc-card';
         card.setAttribute('data-asc-id', asc.id);
 
-        // Format the stats bonus if available
         const statsBonus = asc.stats ? Object.entries(asc.stats)
             .filter(([_, val]) => val > 0)
             .map(([stat, val]) => `${stat}: +${val}%`)
@@ -305,6 +203,79 @@ function renderAscensions(ascensions, selectedAscensions = []) {
         container.appendChild(card);
     });
 }
+
+function renderStatWeightEditors(weights, onChange) {
+    console.log("renderStatWeightEditors called with", weights);
+    const panel = document.getElementById('stat-tier-panel');
+    if (!panel) {
+        console.warn("stat-tier-panel not found");
+        return;
+    }
+
+    panel.innerHTML = '';
+
+    const allStats = [
+        { key: 'str', label: 'Strength' },
+        { key: 'dex', label: 'Dexterity' },
+        { key: 'agi', label: 'Agility' },
+        { key: 'end', label: 'Endurance' },
+        { key: 'int', label: 'Intelligence' },
+        { key: 'wis', label: 'Wisdom' },
+        { key: 'cha', label: 'Charisma' },
+        { key: 'hp', label: 'HP' },
+        { key: 'mana', label: 'Mana' },
+        { key: 'armor', label: 'Armor' },
+        { key: 'mr', label: 'Magic Resist' },
+        { key: 'er', label: 'Elemental Resist' },
+        { key: 'pr', label: 'Poison Resist' },
+        { key: 'vr', label: 'Void Resist' },
+        { key: 'res', label: 'All Resists' },
+        { key: 'effect', label: 'Worn Effect' }  // added effect
+    ];
+
+    allStats.forEach(stat => {
+        const row = document.createElement('div');
+        row.className = 'stat-weight-row';
+
+        const label = document.createElement('span');
+        label.className = 'stat-weight-label';
+        label.textContent = stat.label;
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = 0;
+        input.max = 100;
+        input.step = 1;
+        input.value = weights[stat.key] || 0;
+        input.style.width = '60px';
+        input.style.textAlign = 'center';
+        input.style.background = 'var(--surface2)';
+        input.style.border = '1px solid var(--border)';
+        input.style.color = 'var(--text-bright)';
+
+        input.addEventListener('input', (e) => {
+            const newValue = parseInt(e.target.value) || 0;
+            weights[stat.key] = newValue;
+            if (onChange) onChange({ ...weights });
+        });
+
+        row.appendChild(label);
+        row.appendChild(input);
+        panel.appendChild(row);
+    });
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn btn-ghost';
+    resetBtn.textContent = 'Reset to Class Defaults';
+    resetBtn.style.marginTop = '1rem';
+    resetBtn.style.width = '100%';
+    resetBtn.addEventListener('click', () => {
+        if (window.resetStatWeights) window.resetStatWeights();
+    });
+
+    panel.appendChild(resetBtn);
+}
+
 function toggleAscensionsPanel() {
     console.log("toggleAscensionsPanel called");
 
@@ -327,6 +298,7 @@ function toggleAscensionsPanel() {
         chevron.style.transform = 'rotate(0deg)';
     }
 }
+
 function renderGearList(items) {
     console.log(`renderGearList called with ${items?.length || 0} items`);
 
@@ -338,12 +310,10 @@ function renderGearList(items) {
         return;
     }
 
-    // Update item count
     if (gearCount) {
         gearCount.textContent = `(${items?.length || 0} items)`;
     }
 
-    // Clear the container
     gearList.innerHTML = '';
 
     if (!items || items.length === 0) {
@@ -351,20 +321,16 @@ function renderGearList(items) {
         return;
     }
 
-    // Create a card for each item
     items.forEach(item => {
         const card = document.createElement('div');
         card.className = 'gear-card';
 
-        // Format stats nicely
         const statsHtml = Object.entries(item.stats)
             .map(([stat, value]) => `<span class="gear-stat">${stat.toUpperCase()}: ${value}</span>`)
             .join('');
 
-        // Add relic tag if applicable
         const relicTag = item.relic ? '<span class="relic-tag">✨ Relic</span>' : '';
 
-        // Show quality versions if available
         const qualityHtml = `
             <div class="gear-qualities">
                 ${item.blessed ? '<span class="quality-blessed">✦ Blessed</span>' : ''}
@@ -372,10 +338,8 @@ function renderGearList(items) {
             </div>
         `;
 
-        // Convert slot to lowercase for consistency
         const slotKey = item.slot.toLowerCase();
 
-        // Build the card HTML with an EQUIP BUTTON
         card.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
                 <span class="gear-name">${item.name}</span>
@@ -389,7 +353,6 @@ function renderGearList(items) {
                 ${statsHtml || '<span class="note">No stats</span>'}
             </div>
             ${qualityHtml}
-            <!-- THIS IS THE EQUIP BUTTON -->
             <button class="equip-btn" 
                     data-slot="${slotKey}" 
                     data-item-name="${item.name}"
@@ -398,13 +361,12 @@ function renderGearList(items) {
             </button>
         `;
 
-        // Add the card to the list
         gearList.appendChild(card);
     });
 
     console.log(`Created ${items.length} gear cards with equip buttons`);
 }
-// Toggle Gear Database
+
 function toggleGearDatabase() {
     console.log("toggleGearDatabase called");
 
@@ -425,6 +387,7 @@ function toggleGearDatabase() {
         chevron.style.transform = 'rotate(90deg)';
     }
 }
+
 function renderCurrentGear(gear) {
     console.log("renderCurrentGear called with:", gear);
 
@@ -436,17 +399,14 @@ function renderCurrentGear(gear) {
 
     panel.innerHTML = '';
 
-    // Create header
     const header = document.createElement('div');
     header.className = 'panel-header';
     header.innerHTML = '<h2>⚔️ Current Gear</h2>';
     panel.appendChild(header);
 
-    // Create body
     const body = document.createElement('div');
     body.className = 'panel-body';
 
-    // Check if any gear is equipped
     const hasGear = Object.values(gear).some(item => item !== null);
 
     if (!hasGear) {
@@ -455,7 +415,6 @@ function renderCurrentGear(gear) {
         return;
     }
 
-    // Define all gear slots in display order
     const slots = [
         { key: 'head', label: 'Head' },
         { key: 'neck', label: 'Neck' },
@@ -475,7 +434,6 @@ function renderCurrentGear(gear) {
         { key: 'charm', label: 'Charm' }
     ];
 
-    // Create a grid for gear slots
     const grid = document.createElement('div');
     grid.style.display = 'grid';
     grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
@@ -492,7 +450,6 @@ function renderCurrentGear(gear) {
         slotDiv.style.padding = '8px';
 
         if (item) {
-            // Format stats for tooltip
             const statsHtml = item.stats ? Object.entries(item.stats)
                 .map(([stat, val]) => `<span style="font-size:0.7rem; color:var(--text-dim); display:block;">${stat.toUpperCase()}: ${val}</span>`)
                 .join('') : '';
@@ -519,148 +476,150 @@ function renderCurrentGear(gear) {
     panel.appendChild(body);
 }
 
-function renderLoadoutBuilder(loadout, totalDPS = 0) {
-    console.log("renderLoadoutBuilder called with:", loadout);
-
+function renderLoadoutBuilder(loadout, candidates, tier, statWeights) {
+    console.log("renderLoadoutBuilder called with", loadout, candidates);
     const panel = document.getElementById('loadout-builder-panel');
-    if (!panel) {
-        showMessage("Couldn't find loadout-builder-panel", false);
-        return;
-    }
+    if (!panel) return;
 
     panel.innerHTML = '';
 
-    // Create header
     const header = document.createElement('div');
     header.className = 'panel-header';
-    header.innerHTML = '<h2>📊 Optimized Loadout</h2>';
+    header.innerHTML = '<h2>Loadout Builder</h2>';
     panel.appendChild(header);
 
-    // Create body
-    const body = document.createElement('div');
-    body.className = 'panel-body';
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'score-bar';
+    scoreDiv.id = 'loadout-total-score';
+    panel.appendChild(scoreDiv);
 
-    // Check if loadout exists
-    if (!loadout || Object.keys(loadout).length === 0) {
-        body.innerHTML = '<p class="note" style="padding:1rem; text-align:center;">Click "Find Best Loadout" to see optimized gear recommendations.</p>';
-        panel.appendChild(body);
-        return;
+    const grid = document.createElement('div');
+    grid.className = 'result-grid';
+    panel.appendChild(grid);
+
+    const slots = Object.keys(candidates);
+
+    function updateTotalScore() {
+        const currentLoadout = {};
+        const relicNames = new Set();
+        let duplicateRelic = false;
+
+        slots.forEach(slot => {
+            const select = document.getElementById(`slot-select-${slot}`);
+            if (select) {
+                const selectedName = select.value;
+                const item = candidates[slot]?.find(i => i.name === selectedName) || null;
+                currentLoadout[slot] = item;
+                if (item && item.relic) {
+                    if (relicNames.has(item.name)) {
+                        duplicateRelic = true;
+                    }
+                    relicNames.add(item.name);
+                }
+            } else {
+                currentLoadout[slot] = loadout[slot];
+                if (loadout[slot] && loadout[slot].relic) {
+                    if (relicNames.has(loadout[slot].name)) {
+                        duplicateRelic = true;
+                    }
+                    relicNames.add(loadout[slot].name);
+                }
+            }
+        });
+
+        const total = window.computeLoadoutScore(currentLoadout, tier, statWeights);
+        let scoreHtml = `<span class="score-label">Total Score</span><span class="score-value">${Math.round(total)}</span>`;
+        if (duplicateRelic) {
+            scoreHtml += '<span style="color:var(--red-light); margin-left:1rem;">⚠ Duplicate relic</span>';
+        }
+        scoreDiv.innerHTML = scoreHtml;
     }
-
-    // Show DPS if available
-    if (totalDPS > 0) {
-        const dpsDiv = document.createElement('div');
-        dpsDiv.style.background = 'var(--panel-bg-light)';
-        dpsDiv.style.border = '1px solid var(--border)';
-        dpsDiv.style.borderRadius = '4px';
-        dpsDiv.style.padding = '15px';
-        dpsDiv.style.margin = '10px';
-        dpsDiv.style.textAlign = 'center';
-        dpsDiv.innerHTML = `
-            <div style="font-size:0.8rem; color:var(--text-dim);">Estimated DPS</div>
-            <div style="font-size:2rem; font-weight:bold; color:var(--text-bright);">${totalDPS.toFixed(1)}</div>
-        `;
-        body.appendChild(dpsDiv);
-    }
-
-    // List recommended gear
-    const slots = [
-        { key: 'head', label: 'Head' },
-        { key: 'neck', label: 'Neck' },
-        { key: 'chest', label: 'Chest' },
-        { key: 'back', label: 'Back' },
-        { key: 'arms', label: 'Arms' },
-        { key: 'hands', label: 'Hands' },
-        { key: 'waist', label: 'Waist' },
-        { key: 'legs', label: 'Legs' },
-        { key: 'feet', label: 'Feet' },
-        { key: 'wrist', label: 'Wrist' },
-        { key: 'ring1', label: 'Ring 1' },
-        { key: 'ring2', label: 'Ring 2' },
-        { key: 'primary', label: 'Primary' },
-        { key: 'secondary', label: 'Secondary' },
-        { key: 'aura', label: 'Aura' },
-        { key: 'charm', label: 'Charm' }
-    ];
-
-    const list = document.createElement('div');
-    list.style.padding = '10px';
 
     slots.forEach(slot => {
-        const item = loadout[slot.key];
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.justifyContent = 'space-between';
-        row.style.alignItems = 'center';
-        row.style.padding = '8px';
-        row.style.borderBottom = '1px solid var(--border-light)';
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'result-slot';
+        slotDiv.setAttribute('data-slot', slot);
 
-        if (item) {
-            row.innerHTML = `
-                <div>
-                    <span style="color:var(--text-dim); font-size:0.7rem; width:60px; display:inline-block;">${slot.label}:</span>
-                    <span style="color:var(--text-bright); font-size:0.8rem;">${item.name}</span>
-                </div>
-                <button class="quick-equip-btn" data-slot="${slot.key}" data-item-name="${item.name}" style="background:var(--panel-bg); border:1px solid var(--border); color:var(--text-dim); border-radius:4px; padding:2px 8px; font-size:0.7rem; cursor:pointer;">Equip</button>
-            `;
-        } else {
-            row.innerHTML = `
-                <div>
-                    <span style="color:var(--text-dim); font-size:0.7rem; width:60px; display:inline-block;">${slot.label}:</span>
-                    <span style="color:var(--text-dim); font-size:0.7rem; font-style:italic;">No recommendation</span>
-                </div>
-            `;
+        const slotHeader = document.createElement('div');
+        slotHeader.className = 'result-slot-header';
+        slotHeader.innerHTML = `<span class="result-slot-name">${slot}</span>`;
+        slotDiv.appendChild(slotHeader);
+
+        const candidatesList = candidates[slot];
+        if (!candidatesList || candidatesList.length === 0) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'result-empty';
+            emptyDiv.textContent = 'No items';
+            slotDiv.appendChild(emptyDiv);
+            grid.appendChild(slotDiv);
+            return;
         }
 
-        list.appendChild(row);
+        const select = document.createElement('select');
+        select.id = `slot-select-${slot}`;
+        select.style.width = '100%';
+        select.style.marginBottom = '0.5rem';
+
+        candidatesList.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.name;
+            option.textContent = `${item.name} (lvl ${item.lvl})`;
+            if (loadout[slot] && loadout[slot].name === item.name) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', updateTotalScore);
+        slotDiv.appendChild(select);
+
+        const currentItem = loadout[slot];
+        if (currentItem) {
+            const statsDiv = document.createElement('div');
+            statsDiv.className = 'result-item-stats';
+            statsDiv.textContent = formatItemStats(currentItem, tier);
+            slotDiv.appendChild(statsDiv);
+        }
+
+        grid.appendChild(slotDiv);
     });
 
-    body.appendChild(list);
-    panel.appendChild(body);
+    updateTotalScore();
 }
-// Make it available globally for HTML onclick
-window.toggleGearDb = toggleGearDatabase;
 
-// Placeholder for resetWeights (you can implement this later)
-window.resetWeights = function () {
-    console.log("resetWeights called - to be implemented");
-    showMessage("Reset weights feature coming soon!", true);
-};
+function formatItemStats(item, tier) {
+    let stats = item.stats || {};
+    if (tier === 'blessed' && item.blessed) stats = item.blessed;
+    else if (tier === 'godly' && item.godly) stats = item.godly;
 
-// Placeholder for setTier
-window.setTier = function (tier) {
-    console.log(`setTier called with: ${tier}`);
-    showMessage(`Quality tier set to: ${tier}`, true);
+    return Object.entries(stats)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(' ');
+}
 
-    // Update active button UI
-    document.querySelectorAll('.tier-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.getElementById(`tier-${tier}`)?.classList.add('active');
-};
-window.renderGearList = renderGearList;
-window.showMessage = showMessage;
+// Global assignments for HTML onclick handlers
 window.toggleGearDb = toggleGearDatabase;
 window.resetWeights = window.resetWeights || function () { console.log("resetWeights called"); };
 window.setTier = window.setTier || function (tier) { console.log("setTier called:", tier); };
 window.toggleProfPanel = toggleProficienciesPanel;
 window.toggleAscPanel = toggleAscensionsPanel;
-// Placeholder for optimize button
-window.optimizeAndScroll = function () {
+window.optimizeAndScroll = window.optimizeAndScroll || function () {
     console.log("optimizeAndScroll called - to be implemented");
     showMessage("Optimizer coming soon!", true);
 };
-// Add more export functions as we go...
+window.renderGearList = renderGearList;
+window.showMessage = showMessage;
+
+// ==================== EXPORTS ====================
 export {
     showMessage,
     renderClassBar,
     renderClassDescription,
-    renderStatPriorities,
+    renderStatWeightEditors,
     renderProficiencies,
     renderAscensions,
     toggleAscensionsPanel,
-    renderGearList,
-    toggleGearDatabase,
-    renderCurrentGear,
     renderLoadoutBuilder,
+    renderCurrentGear,
+    renderGearList
 };
