@@ -3,7 +3,39 @@
 
 import { BLESSED_SPARKLE, GODLY_SPARKLE } from './itemImages.js';
 
-// Helper function (private - not exported)
+// ==================== GLOBAL FUNCTION DECLARATIONS ====================
+window.toggleGearDb = null;
+window.resetWeights = null;
+window.setTier = null;
+window.setSlotTier = null;
+window.toggleAscPanel = null;
+window.optimizeAndScroll = null;
+window.renderGearList = null;
+window.showMessage = null;
+window.adjustPanelLayout = null;
+window.adjustAscOptLayout = null;
+window.renderEmptyLoadoutBuilder = null;
+window.showWornEffectTooltip = null;
+window.hideTooltip = null;
+window.showWornEffectDetails = null;
+window.openSlotModal = null;
+window.closeModal = null;
+window.clearCurrentGear = null;
+window.clearLoadoutBuilder = null;
+
+// ==================== PER-SLOT TIER TRACKING ====================
+const slotTiers = {};
+
+function getSlotTier(slot) {
+    return slotTiers[slot] || 'base';
+}
+
+function setSlotTier(slot, tier) {
+    slotTiers[slot] = tier;
+}
+
+// ==================== HELPER FUNCTIONS (private) ====================
+
 function getElement(id) {
     const element = document.getElementById(id);
     if (!element) {
@@ -12,12 +44,101 @@ function getElement(id) {
     return element;
 }
 
-// Helper to get sparkle based on tier (for loadout builder)
+function getCurrentTier() {
+    if (document.getElementById('tier-blessed')?.classList.contains('active')) {
+        return 'blessed';
+    } else if (document.getElementById('tier-double')?.classList.contains('active')) {
+        return 'godly';
+    }
+    return 'base';
+}
+
 function getTierSparkle(tier) {
     if (tier === 'blessed') return BLESSED_SPARKLE;
     if (tier === 'godly') return GODLY_SPARKLE;
     return null;
 }
+
+function getItemImageSrc(item) {
+    if (!item) return '';
+    const name = item.name;
+    const src = (window.ITEM_IMAGES && window.ITEM_IMAGES[name]) ? window.ITEM_IMAGES[name] : '';
+    return src;
+}
+
+function formatItemStats(item, tier) {
+    if (!item) return [];
+
+    let stats = item.stats || {};
+    if (tier === 'blessed' && item.blessed) {
+        stats = item.blessed;
+    } else if (tier === 'godly' && item.godly) {
+        stats = item.godly;
+    }
+
+    return Object.entries(stats)
+        .map(([stat, value]) => ({ stat, value }));
+}
+
+function formatWornEffect(item) {
+    if (!item) return null;
+
+    if (item.slot === 'Aura') {
+        if (item.auraEffect) {
+            if (typeof item.auraEffect === 'object') {
+                return {
+                    name: item.auraEffect.name || 'Aura Effect',
+                    description: item.auraEffect.description || ''
+                };
+            }
+            return {
+                name: item.auraEffect,
+                description: 'Aura effect - click for details'
+            };
+        }
+
+        if (item.description && item.description.includes('Aura')) {
+            return {
+                name: 'Aura',
+                description: item.description
+            };
+        }
+    }
+
+    if (item.wornEffect) {
+        if (typeof item.wornEffect === 'object') {
+            return {
+                name: item.wornEffect.name || 'Unknown Effect',
+                description: item.wornEffect.description || ''
+            };
+        }
+        return {
+            name: item.wornEffect,
+            description: 'Click for more details'
+        };
+    }
+
+    if (item.onWear) {
+        if (typeof item.onWear === 'object') {
+            return {
+                name: item.onWear.name || 'On Wear Effect',
+                description: item.onWear.description || ''
+            };
+        }
+        return {
+            name: item.onWear,
+            description: 'Click for more details'
+        };
+    }
+
+    return null;
+}
+
+// ==================== MODAL VARIABLES ====================
+let currentModalSlot = null;
+let currentModalItemList = null;
+let currentModalCallback = null;
+let currentModalContext = null;
 
 // ==================== EXPORTED FUNCTIONS ====================
 
@@ -40,24 +161,6 @@ function showMessage(message, isWarning = false) {
     setTimeout(() => {
         msgElement.remove();
     }, 5000);
-}
-
-// Helper to get item image src (base64) or empty string if not found
-function getItemImageSrc(item) {
-    if (!item) return '';
-    const name = item.name;
-    const src = (window.ITEM_IMAGES && window.ITEM_IMAGES[name]) ? window.ITEM_IMAGES[name] : '';
-    // Optional debug logs (commented out to reduce noise)
-    // if (!src && window.ITEM_IMAGES) {
-    //     console.log(`❌ No image for: "${name}"`);
-    //     if (!window._loggedKeys) {
-    //         window._loggedKeys = true;
-    //         console.log('Sample ITEM_IMAGES keys:', Object.keys(window.ITEM_IMAGES).slice(0, 5));
-    //     }
-    // } else if (src) {
-    //     console.log(`✅ Image found for: "${name}"`);
-    // }
-    return src;
 }
 
 function renderClassBar(classes, activeClass) {
@@ -97,76 +200,6 @@ function renderClassDescription(description) {
     if (descElement) {
         descElement.textContent = description || 'Select a class to begin';
     }
-}
-
-function renderProficiencies(proficiencies) {
-    console.log("renderProficiencies called with:", proficiencies);
-
-    const table = getElement('prof-table');
-    if (!table) {
-        showMessage("Couldn't find prof-table element", false);
-        return;
-    }
-
-    table.innerHTML = '';
-
-    if (!proficiencies || Object.keys(proficiencies).length === 0) {
-        table.innerHTML = '<p class="note">No proficiency data available</p>';
-        return;
-    }
-
-    const tableElem = document.createElement('table');
-    tableElem.style.width = '100%';
-    tableElem.style.borderCollapse = 'collapse';
-
-    tableElem.innerHTML = `
-        <thead>
-            <tr style="border-bottom:1px solid var(--border);">
-                <th style="text-align:left; padding:8px 4px;">Proficiency</th>
-                <th style="text-align:center; padding:8px 4px;">Base</th>
-                <th style="text-align:center; padding:8px 4px;">Effect</th>
-            </tr>
-        </thead>
-        <tbody>
-        </tbody>
-    `;
-
-    const tbody = tableElem.querySelector('tbody');
-
-    const profNames = {
-        physicality: 'Physicality',
-        hardiness: 'Hardiness',
-        finesse: 'Finesse',
-        defense: 'Defense',
-        arcanism: 'Arcanism',
-        restoration: 'Restoration',
-        mind: 'Mind'
-    };
-
-    const boosts = {
-        physicality: 'STR-based damage',
-        hardiness: 'END (HP & mitigation)',
-        finesse: 'DEX/AGI (crit/avoid)',
-        defense: 'Armor & block',
-        arcanism: 'INT (spell power)',
-        restoration: 'Healing & mana',
-        mind: 'WIS/CHA (utility)'
-    };
-
-    Object.entries(proficiencies).forEach(([prof, value]) => {
-        if (value > 0) {
-            const row = document.createElement('tr');
-            row.style.borderBottom = '1px solid var(--border)';
-            row.innerHTML = `
-                <td style="padding:8px 4px; color:var(--text-bright)">${profNames[prof] || prof}</td>
-                <td style="padding:8px 4px; text-align:center; font-weight:bold;">${value}</td>
-                <td style="padding:8px 4px; color:var(--text-dim); font-size:0.8rem;">${boosts[prof] || 'Various effects'}</td>
-            `;
-            tbody.appendChild(row);
-        }
-    });
-
-    table.appendChild(tableElem);
 }
 
 window.toggleProfPanel = function () {
@@ -214,7 +247,8 @@ function adjustPanelLayout() {
     }
 }
 
-function renderAscensions(ascensions, selectedAscensions = []) {
+// Updated renderAscensions function for uiRenderer.js
+function renderAscensions(ascensions, selectedAscensions = [], ascensionState = { general: {}, class: {}, totalSpent: 0, generalSpent: 0 }, onRankChange = null) {
     console.log("renderAscensions called with:", ascensions?.length || 0, "ascensions");
 
     const container = getElement('asc-panel-inner');
@@ -226,37 +260,177 @@ function renderAscensions(ascensions, selectedAscensions = []) {
     container.innerHTML = '';
 
     if (!ascensions || ascensions.length === 0) {
-        container.innerHTML = '<p class="note">No ascensions available for this class</p>';
+        container.innerHTML = '<p class="note" style="padding:2rem; text-align:center;">No ascensions available for this class</p>';
         return;
     }
 
-    ascensions.forEach(asc => {
+    const GENERAL_ASCENSION_POINTS_REQUIRED = 8;
+
+    // Separate general and class ascensions
+    const generalAscensions = ascensions.filter(asc => asc.usedBy === 0);
+    const classAscensions = ascensions.filter(asc => asc.usedBy !== 0);
+
+    const canUseClassAscensions = ascensionState.generalSpent >= GENERAL_ASCENSION_POINTS_REQUIRED;
+
+    // Points header with progress bar
+    const pointsHeader = document.createElement('div');
+    pointsHeader.className = 'asc-points-header';
+
+    const progressPercentage = Math.min(100, (ascensionState.generalSpent / GENERAL_ASCENSION_POINTS_REQUIRED) * 100);
+
+    pointsHeader.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-family: 'Cinzel', serif; color: var(--text-dim);">Ascension Points</span>
+            <span style="font-family: 'Cinzel', serif; font-size: 1.2rem; color: var(--gold);">${ascensionState.totalSpent}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+            <div style="flex: 1;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">General Progress</span>
+                    <span style="font-size: 0.75rem; color: ${ascensionState.generalSpent >= GENERAL_ASCENSION_POINTS_REQUIRED ? 'var(--green-light)' : 'var(--gold)'};">
+                        ${ascensionState.generalSpent}/${GENERAL_ASCENSION_POINTS_REQUIRED}
+                    </span>
+                </div>
+                <div style="height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden;">
+                    <div style="height: 100%; width: ${progressPercentage}%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);">
+                ${canUseClassAscensions ?
+            '<span style="color: var(--green-light);">✓ Class ascensions unlocked</span>' :
+            `<span style="color: var(--text-dim);">Need ${GENERAL_ASCENSION_POINTS_REQUIRED - ascensionState.generalSpent} more in general</span>`}
+            </div>
+        </div>
+    `;
+    container.appendChild(pointsHeader);
+
+    // Render General Ascensions section
+    if (generalAscensions.length > 0) {
+        const generalHeader = document.createElement('div');
+        generalHeader.className = 'asc-section-header';
+        generalHeader.innerHTML = `
+            <span>✦ GENERAL ASCENSIONS</span>
+            <div class="line"></div>
+        `;
+        container.appendChild(generalHeader);
+
+        generalAscensions.forEach(asc => {
+            renderAscensionCard(asc, true);
+        });
+    }
+
+    // Render Class Ascensions section
+    if (classAscensions.length > 0) {
+        const classHeader = document.createElement('div');
+        classHeader.className = `asc-section-header ${!canUseClassAscensions ? 'locked' : ''}`;
+        classHeader.innerHTML = `
+            <span>⚔️ CLASS ASCENSIONS</span>
+            <div class="line"></div>
+            ${!canUseClassAscensions ? '<span style="font-size: 0.7rem; color: var(--text-dim);">(Locked)</span>' : ''}
+        `;
+        container.appendChild(classHeader);
+
+        classAscensions.forEach(asc => {
+            renderAscensionCard(asc, false);
+        });
+    }
+
+    function renderAscensionCard(asc, isGeneral) {
         const card = document.createElement('div');
         card.className = 'asc-card';
         card.setAttribute('data-asc-id', asc.id);
 
+        // Add class attribute for styling
+        const classMap = { 1: 'Windblade', 2: 'Arcanist', 3: 'Paladin', 4: 'Reaver', 5: 'Druid', 6: 'Stormcaller' };
+        if (asc.usedBy && classMap[asc.usedBy]) {
+            card.setAttribute('data-class', classMap[asc.usedBy]);
+        }
+
+        const currentRank = isGeneral ?
+            (ascensionState.general[asc.id] || 0) :
+            (ascensionState.class[asc.id] || 0);
+
+        const maxRank = asc.maxRank || 3;
+        const isLocked = !isGeneral && !canUseClassAscensions;
+
+        if (isLocked) {
+            card.classList.add('locked');
+        }
+
+        // Format stats bonus
         const statsBonus = asc.stats ? Object.entries(asc.stats)
             .filter(([_, val]) => val > 0)
-            .map(([stat, val]) => `${stat}: +${val}%`)
-            .join(', ') : '';
+            .map(([stat, val]) => {
+                const statNames = {
+                    hp: 'HP', def: 'DEF', mana: 'MANA', intelScaling: 'INT',
+                    advResists: 'RES', killshot: 'KILL', cooldownReduc: 'CDR'
+                };
+                return `${statNames[stat] || stat.toUpperCase()}+${val}%`;
+            })
+            .join(' · ') : '';
+
+        // Generate rank dots
+        const rankDots = Array.from({ length: maxRank }, (_, i) =>
+            `<span class="rank-dot ${i < currentRank ? 'filled' : 'empty'}" data-rank="${i + 1}"></span>`
+        ).join('');
+
+        // Determine if controls should be enabled
+        const canDecrease = currentRank > 0 && !isLocked;
+        const canIncrease = currentRank < maxRank && (isGeneral || canUseClassAscensions) && !isLocked;
 
         card.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-weight:bold; color:var(--text-bright)">${asc.name || 'Unknown'}</span>
-                <span style="color:var(--text-dim); font-size:0.75rem;">Rank ${asc.maxRank || 1}</span>
+            <div class="asc-header">
+                <span class="asc-name">${asc.name || 'Unknown Ascension'}</span>
+                <span class="asc-max-rank">Rank ${maxRank}</span>
             </div>
-            <p style="font-size:0.8rem; margin:4px 0; color:var(--text-dim);">${asc.description || ''}</p>
-            ${statsBonus ? `<p style="font-size:0.7rem; margin:4px 0; color:#8bc34a;">${statsBonus}</p>` : ''}
-            <div style="display:flex; gap:4px; margin-top:8px;">
-                ${Array.from({ length: asc.maxRank || 1 }, (_, i) => `
-                    <span class="rank-dot ${i === 0 ? 'filled' : ''}" 
-                          style="width:12px; height:12px; border-radius:50%; background:${i === 0 ? 'var(--text-bright)' : 'var(--border)'}; display:inline-block;"></span>
-                `).join('')}
+            <div class="asc-description">${asc.description || 'No description available'}</div>
+            ${statsBonus ? `<div class="asc-stats-bonus">✨ ${statsBonus}</div>` : ''}
+            <div class="asc-rank-container">
+                <div class="asc-rank-dots">${rankDots}</div>
+                <div class="rank-controls">
+                    <button class="rank-btn" data-action="decrease" data-id="${asc.id}" data-general="${isGeneral}" ${!canDecrease ? 'disabled' : ''}>−</button>
+                    <button class="rank-btn" data-action="increase" data-id="${asc.id}" data-general="${isGeneral}" ${!canIncrease ? 'disabled' : ''}>+</button>
+                </div>
+            </div>
+            <div class="asc-footer">
+                <span class="asc-points-cost">Cost: ${asc.pointCost || 1} pt/rank</span>
+                <span class="asc-points-remaining">${maxRank - currentRank} ranks left</span>
             </div>
         `;
 
+        // Add rank button handlers if not locked
+        if (onRankChange && !isLocked) {
+            const decreaseBtn = card.querySelector('[data-action="decrease"]');
+            const increaseBtn = card.querySelector('[data-action="increase"]');
+
+            decreaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onRankChange(asc.id, -1, isGeneral);
+            });
+
+            increaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onRankChange(asc.id, 1, isGeneral);
+            });
+        }
+
+        // Click on card to toggle first rank (if not locked)
+        if (!isLocked) {
+            card.addEventListener('click', (e) => {
+                if (e.target.classList.contains('rank-btn')) return;
+
+                if (onRankChange) {
+                    const newRank = currentRank === 0 ? 1 : 0;
+                    const rankDiff = newRank - currentRank;
+                    if ((isGeneral || canUseClassAscensions) && rankDiff !== 0) {
+                        onRankChange(asc.id, rankDiff, isGeneral);
+                    }
+                }
+            });
+        }
+
         container.appendChild(card);
-    });
+    }
 }
 
 function renderStatWeightEditors(weights, onChange) {
@@ -338,14 +512,12 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         return;
     }
 
-    container.innerHTML = ''; // Clear old content
+    container.innerHTML = '';
 
-    // Create a table
     const table = document.createElement('table');
     table.style.width = '100%';
     table.style.borderCollapse = 'collapse';
 
-    // Table header
     table.innerHTML = `
         <thead>
             <tr style="border-bottom:1px solid var(--border);">
@@ -353,7 +525,7 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
                 <th style="text-align:center; padding:8px 4px;">Base</th>
                 <th style="text-align:center; padding:8px 4px;">Allocated</th>
                 <th style="text-align:center; padding:8px 4px;">Total</th>
-                <th style="text-align:center; padding:8px 4px;"></th> <!-- for buttons -->
+                <th style="text-align:center; padding:8px 4px;"></th>
             </tr>
         </thead>
         <tbody>
@@ -362,7 +534,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
 
     const tbody = table.querySelector('tbody');
 
-    // Map proficiency keys to display names
     const profNames = {
         physicality: 'Physicality',
         hardiness: 'Hardiness',
@@ -373,7 +544,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         mind: 'Mind'
     };
 
-    // Create a row for each proficiency
     Object.entries(baseProfs).forEach(([key, baseValue]) => {
         const allocated = allocations[key] || 0;
         const total = baseValue + allocated;
@@ -381,14 +551,12 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         const row = document.createElement('tr');
         row.style.borderBottom = '1px solid var(--border-light)';
 
-        // Proficiency name
         const nameCell = document.createElement('td');
         nameCell.style.padding = '8px 4px';
         nameCell.style.color = 'var(--text-bright)';
         nameCell.textContent = profNames[key] || key;
         row.appendChild(nameCell);
 
-        // Base value
         const baseCell = document.createElement('td');
         baseCell.style.padding = '8px 4px';
         baseCell.style.textAlign = 'center';
@@ -396,19 +564,16 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         baseCell.textContent = baseValue;
         row.appendChild(baseCell);
 
-        // Allocated value (with buttons)
         const allocCell = document.createElement('td');
         allocCell.style.padding = '8px 4px';
         allocCell.style.textAlign = 'center';
 
-        // Container for allocated number and buttons
         const allocDiv = document.createElement('div');
         allocDiv.style.display = 'flex';
         allocDiv.style.alignItems = 'center';
         allocDiv.style.justifyContent = 'center';
         allocDiv.style.gap = '4px';
 
-        // Minus button
         const minusBtn = document.createElement('button');
         minusBtn.textContent = '−';
         minusBtn.style.width = '24px';
@@ -426,7 +591,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         });
         allocDiv.appendChild(minusBtn);
 
-        // Allocated number
         const allocSpan = document.createElement('span');
         allocSpan.style.minWidth = '30px';
         allocSpan.style.textAlign = 'center';
@@ -434,7 +598,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         allocSpan.textContent = allocated;
         allocDiv.appendChild(allocSpan);
 
-        // Plus button
         const plusBtn = document.createElement('button');
         plusBtn.textContent = '+';
         plusBtn.style.width = '24px';
@@ -455,7 +618,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         allocCell.appendChild(allocDiv);
         row.appendChild(allocCell);
 
-        // Total value
         const totalCell = document.createElement('td');
         totalCell.style.padding = '8px 4px';
         totalCell.style.textAlign = 'center';
@@ -464,7 +626,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         totalCell.textContent = total;
         row.appendChild(totalCell);
 
-        // Empty cell for alignment (keeps table consistent)
         const emptyCell = document.createElement('td');
         emptyCell.style.padding = '8px 4px';
         row.appendChild(emptyCell);
@@ -472,7 +633,6 @@ export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining,
         tbody.appendChild(row);
     });
 
-    // Add a row for points remaining
     const remainingRow = document.createElement('tr');
     const remainingCell = document.createElement('td');
     remainingCell.colSpan = 5;
@@ -536,51 +696,81 @@ function renderGearList(items) {
         const card = document.createElement('div');
         card.className = 'gear-card';
 
-        // Determine sparkle for blessed/godly
-        const sparkleHtml = item.blessed ? `<img src="${BLESSED_SPARKLE}" style="width:24px; height:24px; margin-left:4px; vertical-align:middle;" title="Blessed">` :
-            (item.godly ? `<img src="${GODLY_SPARKLE}" style="width:24px; height:24px; margin-left:4px; vertical-align:middle;" title="Godly">` : '');
-
-        // Stats as bulleted list
         const statsHtml = Object.entries(item.stats)
             .map(([stat, value]) => `<li>${stat.toUpperCase()}: ${value}</li>`)
             .join('');
 
         const relicTag = item.relic ? '<span class="relic-tag">✨ Relic</span>' : '';
 
-        const qualityHtml = `
-            <div class="gear-qualities">
-                ${item.blessed ? '<span class="quality-blessed">✦ Blessed</span>' : ''}
-                ${item.godly ? '<span class="quality-godly">✦✦ Godly</span>' : ''}
+        const wornEffect = formatWornEffect(item);
+        const wornEffectHtml = wornEffect ? `
+            <div class="worn-effect" style="margin-top:4px; font-size:0.75rem;">
+                <span class="worn-effect-name" 
+                      style="color:var(--blue-light); cursor:help; text-decoration:underline dotted;"
+                      onmouseenter="showWornEffectTooltip('${wornEffect.name.replace(/'/g, "\\'")}', '${wornEffect.description.replace(/'/g, "\\'")}')"
+                      onmouseleave="hideTooltip()"
+                      onclick="showWornEffectDetails('${wornEffect.name.replace(/'/g, "\\'")}')">
+                    ✨ ${wornEffect.name}
+                </span>
             </div>
-        `;
+        ` : '';
 
-        const slotKey = item.slot.toLowerCase();
+        const auraIndicator = item.slot === 'Aura' && !wornEffect ?
+            '<div style="color:var(--gold); font-size:0.7rem; margin-top:2px;">Aura (effect details coming soon)</div>' : '';
 
         card.innerHTML = `
-            <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:8px;">
-                <img src="${getItemImageSrc(item)}" alt="${item.name}" class="gear-item-img" style="width:48px; height:48px; object-fit:contain; image-rendering:pixelated;">
-                <div style="width:100%;">
-                    <div style="display:flex; justify-content:space-between; align-items:start;">
-                        <span class="gear-name">${item.name} ${sparkleHtml}</span>
-                        ${relicTag}
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="position:relative; width:48px; height:48px;">
+                        <img src="${getItemImageSrc(item)}" alt="${item.name}" class="gear-item-img" style="width:48px; height:48px; object-fit:contain; image-rendering:pixelated;">
                     </div>
-                    <div class="gear-slot-level">
-                        <span class="gear-slot">${item.slot}</span>
-                        <span class="gear-level">Lvl ${item.lvl}</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; justify-content:space-between; align-items:start;">
+                            <span class="gear-name" style="font-weight:bold;">${item.name}</span>
+                            ${relicTag}
+                        </div>
+                        <div class="gear-slot-level">
+                            <span class="gear-slot">${item.slot}</span>
+                            <span class="gear-level">Lvl ${item.lvl}</span>
+                        </div>
+                        ${wornEffectHtml}
+                        ${auraIndicator}
                     </div>
                 </div>
+                <div class="gear-stats">
+                    <ul class="gear-stats-list" style="margin:0; padding-left:20px;">${statsHtml || '<li>No stats</li>'}</ul>
+                </div>
             </div>
-            <div class="gear-stats">
-                <ul class="gear-stats-list">${statsHtml || '<li>No stats</li>'}</ul>
-            </div>
-            ${qualityHtml}
             <button class="equip-btn" 
-                    data-slot="${slotKey}" 
+                    data-slot="${item.slot.toLowerCase()}" 
                     data-item-name="${item.name}"
                     data-item='${JSON.stringify(item).replace(/'/g, "&apos;")}'>
                 ⚔️ Equip
             </button>
         `;
+
+        // Add click handler for the equip button
+        const equipBtn = card.querySelector('.equip-btn');
+        if (equipBtn) {
+            equipBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slot = e.target.dataset.slot;
+                const item = JSON.parse(e.target.dataset.item);
+
+                if (window.equipItem) {
+                    window.equipItem(slot, item);
+
+                    // Use the current global tier for new items
+                    const globalTier = getCurrentTier();
+                    if (window.setSlotTier) {
+                        window.setSlotTier(slot, globalTier);
+                    }
+
+                    renderCurrentGear(window.getCurrentGear());
+                    showMessage(`Equipped ${item.name} as ${globalTier} tier`, true);
+                }
+            });
+        }
 
         gearList.appendChild(card);
     });
@@ -620,19 +810,19 @@ function renderCurrentGear(gear) {
 
     panel.innerHTML = '';
 
-    // Header
     const header = document.createElement('div');
     header.className = 'panel-header';
-    header.innerHTML = '<h2>⚔️ Current Gear</h2>';
+    header.innerHTML = `
+        <h2>⚔️ Current Gear</h2>
+        <button class="clear-btn" onclick="window.clearCurrentGear()" style="background:none; border:1px solid var(--red); color:var(--red-light); padding:2px 8px; font-size:0.7rem; cursor:pointer; border-radius:3px;">✗ Clear All</button>
+    `;
     panel.appendChild(header);
 
-    // Score bar
     const scoreDiv = document.createElement('div');
     scoreDiv.className = 'score-bar';
     scoreDiv.id = 'current-gear-score';
     panel.appendChild(scoreDiv);
 
-    // Grid container
     const grid = document.createElement('div');
     grid.className = 'result-grid';
     panel.appendChild(grid);
@@ -657,10 +847,18 @@ function renderCurrentGear(gear) {
     ];
 
     function updateTotalScore() {
-        const tier = document.querySelector('.tier-btn.active')?.id?.replace('tier-', '') || 'base';
         const statWeights = window.currentStatWeights || {};
-        const total = window.computeLoadoutScore(gear, tier, statWeights);
-        scoreDiv.innerHTML = `<span class="score-label">Current Gear Score</span><span class="score-value">${Math.round(total)}</span>`;
+        let total = 0;
+
+        slots.forEach(slot => {
+            const item = gear[slot.key];
+            if (item) {
+                const slotTier = getSlotTier(slot.key);
+                total += window.computeLoadoutScore({ [slot.key]: item }, slotTier, statWeights);
+            }
+        });
+
+        scoreDiv.innerHTML = `<span class="score-label">Current Gear Score</span><span class="score-value">${Math.round(total || 0)}</span>`;
     }
 
     slots.forEach(slot => {
@@ -670,48 +868,135 @@ function renderCurrentGear(gear) {
         slotDiv.setAttribute('data-slot', slot.key);
         slotDiv.style.cursor = 'pointer';
 
-        // Slot header
+        const slotTier = getSlotTier(slot.key);
+
         const slotHeader = document.createElement('div');
         slotHeader.className = 'result-slot-header';
         slotHeader.innerHTML = `
             <span class="result-slot-name">${slot.label}</span>
-            <span class="edit-icon" style="font-size:0.8rem; opacity:0.7;">✎</span>
+            <div style="display:flex; gap:4px;">
+                <select class="tier-select" data-slot="${slot.key}" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); font-size:0.65rem; padding:2px; border-radius:3px;">
+                    <option value="base" ${slotTier === 'base' ? 'selected' : ''}>Base</option>
+                    <option value="blessed" ${slotTier === 'blessed' ? 'selected' : ''}>✦ Blessed</option>
+                    <option value="godly" ${slotTier === 'godly' ? 'selected' : ''}>✦✦ Godly</option>
+                </select>
+                <span class="edit-icon" style="font-size:0.8rem; opacity:0.7; cursor:pointer;">✎</span>
+            </div>
         `;
         slotDiv.appendChild(slotHeader);
 
         if (item) {
-            // Image HTML
-            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:32px; height:32px; object-fit:contain; image-rendering:pixelated; margin-right:8px;">` : '';
+            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:48px; height:48px; object-fit:contain; image-rendering:pixelated;">` : '';
 
-            // --- FIXED SPARKLE LOGIC ---
-            // Only show sparkle if blessed/godly object has actual stats
-            const hasBlessed = item.blessed && typeof item.blessed === 'object' && Object.keys(item.blessed).length > 0;
-            const hasGodly = item.godly && typeof item.godly === 'object' && Object.keys(item.godly).length > 0;
-            const sparkleHtml = hasBlessed ? `<img src="${BLESSED_SPARKLE}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="Blessed">` :
-                (hasGodly ? `<img src="${GODLY_SPARKLE}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="Godly">` : '');
-            // -------------------------
+            let sparkleHtml = '';
+            if (slotTier === 'blessed' && item.blessed && Object.keys(item.blessed).length > 0) {
+                sparkleHtml = `<img src="${BLESSED_SPARKLE}" style="position:absolute; top:0; left:0; width:48px; height:48px; z-index:2; object-fit:contain;" title="Blessed">`;
+            } else if (slotTier === 'godly' && item.godly && Object.keys(item.godly).length > 0) {
+                sparkleHtml = `<img src="${GODLY_SPARKLE}" style="position:absolute; top:0; left:0; width:48px; height:48px; z-index:2; object-fit:contain;" title="Godly">`;
+            }
 
-            // Name with sparkle
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'result-item-name';
-            nameDiv.innerHTML = `${imageHtml} ${item.name} ${sparkleHtml}`;
-            slotDiv.appendChild(nameDiv);
+            const wornEffect = formatWornEffect(item);
+            const wornEffectHtml = wornEffect ? `
+                <div class="worn-effect" style="margin-top:4px; font-size:0.7rem;">
+                    <span class="worn-effect-name" 
+                          style="color:var(--blue-light); cursor:help; text-decoration:underline dotted;"
+                          onmouseenter="showWornEffectTooltip('${wornEffect.name.replace(/'/g, "\\'")}', '${wornEffect.description.replace(/'/g, "\\'")}')"
+                          onmouseleave="hideTooltip()"
+                          onclick="showWornEffectDetails('${wornEffect.name.replace(/'/g, "\\'")}')">
+                        ✨ ${wornEffect.name}
+                    </span>
+                </div>
+            ` : '';
 
-            // Stats (base)
-            const statsDiv = document.createElement('div');
-            statsDiv.className = 'result-item-stats';
-            statsDiv.textContent = formatItemStats(item, 'base');
-            slotDiv.appendChild(statsDiv);
+            const auraFallback = (slot.key === 'aura' && !wornEffect) ?
+                '<div style="color:var(--gold); font-size:0.7rem; margin-top:2px;">Active Aura</div>' : '';
+
+            const itemContainer = document.createElement('div');
+            itemContainer.style.display = 'flex';
+            itemContainer.style.alignItems = 'flex-start';
+            itemContainer.style.gap = '8px';
+            itemContainer.style.marginTop = '4px';
+
+            const imageContainer = document.createElement('div');
+            imageContainer.style.position = 'relative';
+            imageContainer.style.width = '48px';
+            imageContainer.style.height = '48px';
+            imageContainer.style.flexShrink = '0';
+            imageContainer.innerHTML = imageHtml + sparkleHtml;
+
+            const detailsContainer = document.createElement('div');
+            detailsContainer.style.flex = '1';
+            detailsContainer.style.minWidth = '0';
+            detailsContainer.innerHTML = `
+                <div class="result-item-name" style="font-weight:bold; margin-bottom:2px;">${item.name}</div>
+                ${wornEffectHtml}
+                ${auraFallback}
+            `;
+
+            itemContainer.appendChild(imageContainer);
+            itemContainer.appendChild(detailsContainer);
+            slotDiv.appendChild(itemContainer);
+
+            const stats = formatItemStats(item, slotTier);
+            if (stats.length > 0) {
+                const statsList = document.createElement('ul');
+                statsList.className = 'result-item-stats';
+                statsList.style.margin = '8px 0 0 0';
+                statsList.style.paddingLeft = '20px';
+                statsList.style.fontSize = '0.75rem';
+
+                stats.forEach(({ stat, value }) => {
+                    const li = document.createElement('li');
+                    li.textContent = `${stat.toUpperCase()}: ${value}`;
+                    statsList.appendChild(li);
+                });
+
+                slotDiv.appendChild(statsList);
+            }
         } else {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'result-empty';
+            emptyDiv.style.padding = '8px';
+            emptyDiv.style.textAlign = 'center';
             emptyDiv.textContent = 'Empty';
             slotDiv.appendChild(emptyDiv);
         }
 
+        // Tier select change handler
+        const tierSelect = slotDiv.querySelector('.tier-select');
+        if (tierSelect) {
+            tierSelect.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const newTier = e.target.value;
+                setSlotTier(slot.key, newTier);
+                renderCurrentGear(gear);
+            });
+        }
+
         slotDiv.addEventListener('click', (e) => {
-            window.openSlotModal(slot.key);
+            if (e.target.classList.contains('edit-icon') || e.target.classList.contains('tier-select')) {
+                return;
+            }
+            window.openSlotModal(slot.key, null, function (slotKey, selectedItem) {
+                window.equipItem(slotKey, selectedItem);
+                const globalTier = getCurrentTier();
+                setSlotTier(slotKey, globalTier);
+                renderCurrentGear(window.getCurrentGear());
+            }, 'currentGear');
         });
+
+        const editIcon = slotDiv.querySelector('.edit-icon');
+        if (editIcon) {
+            editIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.openSlotModal(slot.key, null, function (slotKey, selectedItem) {
+                    window.equipItem(slotKey, selectedItem);
+                    const globalTier = getCurrentTier();
+                    setSlotTier(slotKey, globalTier);
+                    renderCurrentGear(window.getCurrentGear());
+                }, 'currentGear');
+            });
+        }
 
         grid.appendChild(slotDiv);
     });
@@ -728,101 +1013,211 @@ function renderLoadoutBuilder(loadout, candidates, tier, statWeights) {
 
     panel.innerHTML = '';
 
-    // Header
     const header = document.createElement('div');
     header.className = 'panel-header';
-    header.innerHTML = '<h2>Loadout Builder</h2>';
+    header.innerHTML = `
+        <h2>Loadout Builder</h2>
+        <button class="clear-btn" onclick="window.clearLoadoutBuilder()" style="background:none; border:1px solid var(--red); color:var(--red-light); padding:2px 8px; font-size:0.7rem; cursor:pointer; border-radius:3px;">✗ Clear All</button>
+    `;
     panel.appendChild(header);
 
-    // Score bar
     const scoreDiv = document.createElement('div');
     scoreDiv.className = 'score-bar';
     scoreDiv.id = 'loadout-total-score';
     panel.appendChild(scoreDiv);
 
-    // Grid container
     const grid = document.createElement('div');
     grid.className = 'result-grid';
     panel.appendChild(grid);
 
-    const slots = Object.keys(candidates);
+    const allSlots = [
+        'head', 'neck', 'chest', 'back', 'arms', 'hands', 'waist',
+        'legs', 'feet', 'wrist', 'ring1', 'ring2', 'primary', 'secondary',
+        'aura', 'charm'
+    ];
 
-    // Function to update total score (called after changes)
+    const slots = candidates && Object.keys(candidates).length > 0 ? Object.keys(candidates) : allSlots;
+
     function updateTotalScore() {
         const currentLoadout = {};
         const relicNames = new Set();
         let duplicateRelic = false;
+        let hasValidItems = false;
+        let total = 0;
 
         slots.forEach(slot => {
-            const slotDiv = document.querySelector(`.result-slot[data-slot="${slot}"]`);
-            if (slotDiv) {
+            const slotDiv = document.querySelector(`#loadout-builder-panel .result-slot[data-slot="${slot}"]`);
+            if (slotDiv && slotDiv.dataset.itemName) {
                 const itemName = slotDiv.dataset.itemName;
-                const item = candidates[slot]?.find(i => i.name === itemName) || null;
-                currentLoadout[slot] = item;
-                if (item && item.relic) {
-                    if (relicNames.has(item.name)) duplicateRelic = true;
-                    relicNames.add(item.name);
+                let item = null;
+
+                if (candidates && candidates[slot] && Array.isArray(candidates[slot])) {
+                    item = candidates[slot].find(i => i && i.name === itemName);
                 }
-            } else {
-                currentLoadout[slot] = loadout[slot];
+
+                if (!item && loadout && loadout[slot] && loadout[slot].name === itemName) {
+                    item = loadout[slot];
+                }
+
+                if (!item) {
+                    item = window.gearData?.find(g => g && g.name === itemName);
+                }
+
+                if (item) {
+                    currentLoadout[slot] = item;
+                    hasValidItems = true;
+                    if (item.relic) {
+                        if (relicNames.has(item.name)) duplicateRelic = true;
+                        relicNames.add(item.name);
+                    }
+
+                    const slotTier = getSlotTier(slot);
+                    total += window.computeLoadoutScore({ [slot]: item }, slotTier, statWeights);
+                }
             }
         });
 
-        const total = window.computeLoadoutScore(currentLoadout, tier, statWeights);
-        let scoreHtml = `<span class="score-label">Total Score</span><span class="score-value">${Math.round(total)}</span>`;
+        let scoreHtml = `<span class="score-label">Total Score</span><span class="score-value">${Math.round(total || 0)}</span>`;
         if (duplicateRelic) {
             scoreHtml += '<span style="color:var(--red-light); margin-left:1rem;">⚠ Duplicate relic</span>';
         }
         scoreDiv.innerHTML = scoreHtml;
     }
 
-    // Create slot elements
+    function updateLoadoutSlot(slotKey, newItem) {
+        loadout[slotKey] = newItem;
+
+        if (!candidates[slotKey]) {
+            candidates[slotKey] = [];
+        }
+        if (newItem && !candidates[slotKey].find(i => i && i.name === newItem.name)) {
+            candidates[slotKey].push(newItem);
+        }
+
+        renderLoadoutBuilder(loadout, candidates, tier, statWeights);
+    }
+
     slots.forEach(slot => {
-        const item = loadout[slot]; // selected item
+        const item = loadout[slot];
         const slotDiv = document.createElement('div');
         slotDiv.className = 'result-slot';
         slotDiv.setAttribute('data-slot', slot);
-        if (item) slotDiv.dataset.itemName = item.name; // store for score update
+        if (item) slotDiv.dataset.itemName = item.name;
         slotDiv.style.cursor = 'pointer';
 
-        // Slot header with slot name
+        const slotTier = getSlotTier(slot);
+
         const slotHeader = document.createElement('div');
         slotHeader.className = 'result-slot-header';
-        slotHeader.innerHTML = `<span class="result-slot-name">${slot}</span>`;
+        slotHeader.innerHTML = `
+            <span class="result-slot-name">${slot}</span>
+            <div style="display:flex; gap:4px;">
+                <select class="tier-select" data-slot="${slot}" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); font-size:0.65rem; padding:2px; border-radius:3px;">
+                    <option value="base" ${slotTier === 'base' ? 'selected' : ''}>Base</option>
+                    <option value="blessed" ${slotTier === 'blessed' ? 'selected' : ''}>✦ Blessed</option>
+                    <option value="godly" ${slotTier === 'godly' ? 'selected' : ''}>✦✦ Godly</option>
+                </select>
+            </div>
+        `;
         slotDiv.appendChild(slotHeader);
 
         if (item) {
-            // Image HTML
-            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:32px; height:32px; object-fit:contain; image-rendering:pixelated; margin-right:8px;">` : '';
+            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:48px; height:48px; object-fit:contain; image-rendering:pixelated;">` : '';
 
-            // Sparkle for current tier (if item has blessed/godly versions)
-            const sparkleUrl = getTierSparkle(tier);
-            const sparkleHtml = sparkleUrl && (tier === 'blessed' && item.blessed || tier === 'godly' && item.godly)
-                ? `<img src="${sparkleUrl}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="${tier}">`
-                : '';
+            let sparkleHtml = '';
+            if (slotTier === 'blessed' && item.blessed && Object.keys(item.blessed).length > 0) {
+                sparkleHtml = `<img src="${BLESSED_SPARKLE}" style="position:absolute; top:0; left:0; width:48px; height:48px; z-index:2; object-fit:contain;" title="Blessed">`;
+            } else if (slotTier === 'godly' && item.godly && Object.keys(item.godly).length > 0) {
+                sparkleHtml = `<img src="${GODLY_SPARKLE}" style="position:absolute; top:0; left:0; width:48px; height:48px; z-index:2; object-fit:contain;" title="Godly">`;
+            }
 
-            // Item name
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'result-item-name';
-            nameDiv.innerHTML = `${imageHtml} ${item.name} ${sparkleHtml}`;
-            slotDiv.appendChild(nameDiv);
+            const wornEffect = formatWornEffect(item);
+            const wornEffectHtml = wornEffect ? `
+                <div class="worn-effect" style="margin-top:4px; font-size:0.7rem;">
+                    <span class="worn-effect-name" 
+                          style="color:var(--blue-light); cursor:help; text-decoration:underline dotted;"
+                          onmouseenter="showWornEffectTooltip('${wornEffect.name.replace(/'/g, "\\'")}', '${wornEffect.description.replace(/'/g, "\\'")}')"
+                          onmouseleave="hideTooltip()"
+                          onclick="showWornEffectDetails('${wornEffect.name.replace(/'/g, "\\'")}')">
+                        ✨ ${wornEffect.name}
+                    </span>
+                </div>
+            ` : '';
 
-            // Stats
-            const statsDiv = document.createElement('div');
-            statsDiv.className = 'result-item-stats';
-            statsDiv.textContent = formatItemStats(item, tier);
-            slotDiv.appendChild(statsDiv);
+            const auraFallback = (slot === 'aura' && !wornEffect) ?
+                '<div style="color:var(--gold); font-size:0.7rem; margin-top:2px;">Active Aura</div>' : '';
+
+            const itemContainer = document.createElement('div');
+            itemContainer.style.display = 'flex';
+            itemContainer.style.alignItems = 'flex-start';
+            itemContainer.style.gap = '8px';
+            itemContainer.style.marginTop = '4px';
+
+            const imageContainer = document.createElement('div');
+            imageContainer.style.position = 'relative';
+            imageContainer.style.width = '48px';
+            imageContainer.style.height = '48px';
+            imageContainer.style.flexShrink = '0';
+            imageContainer.innerHTML = imageHtml + sparkleHtml;
+
+            const detailsContainer = document.createElement('div');
+            detailsContainer.style.flex = '1';
+            detailsContainer.style.minWidth = '0';
+            detailsContainer.innerHTML = `
+                <div class="result-item-name" style="font-weight:bold; margin-bottom:2px;">${item.name}</div>
+                ${wornEffectHtml}
+                ${auraFallback}
+            `;
+
+            itemContainer.appendChild(imageContainer);
+            itemContainer.appendChild(detailsContainer);
+            slotDiv.appendChild(itemContainer);
+
+            const stats = formatItemStats(item, slotTier);
+            if (stats.length > 0) {
+                const statsList = document.createElement('ul');
+                statsList.className = 'result-item-stats';
+                statsList.style.margin = '8px 0 0 0';
+                statsList.style.paddingLeft = '20px';
+                statsList.style.fontSize = '0.75rem';
+
+                stats.forEach(({ stat, value }) => {
+                    const li = document.createElement('li');
+                    li.textContent = `${stat.toUpperCase()}: ${value}`;
+                    statsList.appendChild(li);
+                });
+
+                slotDiv.appendChild(statsList);
+            }
         } else {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'result-empty';
+            emptyDiv.style.padding = '8px';
+            emptyDiv.style.textAlign = 'center';
             emptyDiv.textContent = 'Empty';
             slotDiv.appendChild(emptyDiv);
         }
 
-        // Click handler to open modal with candidate items
+        // Tier select change handler
+        const tierSelect = slotDiv.querySelector('.tier-select');
+        if (tierSelect) {
+            tierSelect.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const newTier = e.target.value;
+                setSlotTier(slot, newTier);
+                renderLoadoutBuilder(loadout, candidates, tier, statWeights);
+            });
+        }
+
         slotDiv.addEventListener('click', (e) => {
-            // Pass the candidate list for this slot
-            window.openSlotModal(slot, candidates[slot] || []);
+            if (e.target.classList.contains('tier-select')) {
+                return;
+            }
+            window.openSlotModal(slot, candidates[slot] || [], function (slotKey, selectedItem) {
+                const globalTier = getCurrentTier();
+                setSlotTier(slotKey, globalTier);
+                updateLoadoutSlot(slotKey, selectedItem);
+            }, 'loadoutBuilder');
         });
 
         grid.appendChild(slotDiv);
@@ -840,35 +1235,142 @@ function renderEmptyLoadoutBuilder() {
 
     const header = document.createElement('div');
     header.className = 'panel-header';
-    header.innerHTML = '<h2>Loadout Builder</h2>';
+    header.innerHTML = `
+        <h2>Loadout Builder</h2>
+        <button class="clear-btn" onclick="window.clearLoadoutBuilder()" style="background:none; border:1px solid var(--red); color:var(--red-light); padding:2px 8px; font-size:0.7rem; cursor:pointer; border-radius:3px;">✗ Clear All</button>
+    `;
     panel.appendChild(header);
 
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'panel-body';
-    messageDiv.style.textAlign = 'center';
-    messageDiv.style.padding = '2rem';
-    messageDiv.style.color = 'var(--text-dim)';
-    messageDiv.style.fontStyle = 'italic';
-    messageDiv.innerHTML = 'Click "Find Best Loadout" to generate a suggested gear set.';
-    panel.appendChild(messageDiv);
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'score-bar';
+    scoreDiv.id = 'loadout-total-score';
+    scoreDiv.innerHTML = '<span class="score-label">Total Score</span><span class="score-value">0</span>';
+    panel.appendChild(scoreDiv);
+
+    const grid = document.createElement('div');
+    grid.className = 'result-grid';
+    panel.appendChild(grid);
+
+    const slots = [
+        'head', 'neck', 'chest', 'back', 'arms', 'hands', 'waist',
+        'legs', 'feet', 'wrist', 'ring1', 'ring2', 'primary', 'secondary',
+        'aura', 'charm'
+    ];
+
+    slots.forEach(slot => {
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'result-slot';
+        slotDiv.setAttribute('data-slot', slot);
+        slotDiv.style.cursor = 'pointer';
+
+        const slotTier = getSlotTier(slot);
+
+        const slotHeader = document.createElement('div');
+        slotHeader.className = 'result-slot-header';
+        slotHeader.innerHTML = `
+            <span class="result-slot-name">${slot}</span>
+            <div style="display:flex; gap:4px;">
+                <select class="tier-select" data-slot="${slot}" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); font-size:0.65rem; padding:2px; border-radius:3px;">
+                    <option value="base" ${slotTier === 'base' ? 'selected' : ''}>Base</option>
+                    <option value="blessed" ${slotTier === 'blessed' ? 'selected' : ''}>✦ Blessed</option>
+                    <option value="godly" ${slotTier === 'godly' ? 'selected' : ''}>✦✦ Godly</option>
+                </select>
+            </div>
+        `;
+        slotDiv.appendChild(slotHeader);
+
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'result-empty';
+        emptyDiv.style.padding = '8px';
+        emptyDiv.style.textAlign = 'center';
+        emptyDiv.textContent = 'Empty';
+        slotDiv.appendChild(emptyDiv);
+
+        // Tier select change handler
+        const tierSelect = slotDiv.querySelector('.tier-select');
+        if (tierSelect) {
+            tierSelect.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const newTier = e.target.value;
+                setSlotTier(slot, newTier);
+                // Just update the tier for empty slot - no need to re-render
+            });
+        }
+
+        slotDiv.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tier-select')) {
+                return;
+            }
+            window.openSlotModal(slot, null, function (slotKey, selectedItem) {
+                if (!window.lastOptimizerResult) {
+                    window.lastOptimizerResult = {
+                        bestLoadout: {},
+                        candidates: {}
+                    };
+                }
+                window.lastOptimizerResult.bestLoadout[slotKey] = selectedItem;
+                const globalTier = getCurrentTier();
+                setSlotTier(slotKey, globalTier);
+                renderLoadoutBuilder(
+                    window.lastOptimizerResult.bestLoadout,
+                    window.lastOptimizerResult.candidates,
+                    getCurrentTier(),
+                    window.currentStatWeights || {}
+                );
+            }, 'loadoutBuilder');
+        });
+
+        grid.appendChild(slotDiv);
+    });
+
+    panel.appendChild(grid);
 }
 
 // ==================== MODAL FUNCTIONS ====================
-let currentModalSlot = null;
-let currentModalItemList = null; // new
 
-window.openSlotModal = function (slotKey, itemList = null) {
+function setupModalCloseHandlers() {
+    const modal = document.getElementById('slot-modal');
+    const closeBtn = document.getElementById('slot-modal-close');
+    const backdrop = document.querySelector('.slot-modal-backdrop');
+
+    if (closeBtn) {
+        closeBtn.replaceWith(closeBtn.cloneNode(true));
+        const newCloseBtn = document.getElementById('slot-modal-close');
+        newCloseBtn.onclick = function () {
+            modal.style.display = 'none';
+            currentModalCallback = null;
+            currentModalContext = null;
+        };
+    }
+
+    if (backdrop) {
+        backdrop.onclick = function (e) {
+            if (e.target === backdrop) {
+                modal.style.display = 'none';
+                currentModalCallback = null;
+                currentModalContext = null;
+            }
+        };
+    }
+}
+
+window.openSlotModal = function (slotKey, itemList = null, onSelectCallback = null, context = 'currentGear') {
     currentModalSlot = slotKey;
-    currentModalItemList = itemList; // store for populate
+    currentModalItemList = itemList;
+    currentModalCallback = onSelectCallback;
+    currentModalContext = context;
+
     const modal = document.getElementById('slot-modal');
     if (!modal) {
         console.error("Modal element not found");
         return;
     }
+
     const title = document.getElementById('slot-modal-title');
     if (title) title.textContent = `Select ${slotKey}`;
 
     populateSlotModal(slotKey);
+    setupModalCloseHandlers();
     modal.style.display = 'flex';
 };
 
@@ -876,10 +1378,8 @@ function populateSlotModal(slotKey) {
     const resultsDiv = document.getElementById('slot-modal-results');
     const searchInput = document.getElementById('slot-modal-search');
 
-    // Use provided item list if available, otherwise fallback to all gear
     let items = currentModalItemList || window.gearData || [];
 
-    // Filter by slot if using all gear (fallback)
     if (!currentModalItemList) {
         const slotMap = {
             head: 'Head', neck: 'Neck', chest: 'Chest', back: 'Back',
@@ -888,18 +1388,16 @@ function populateSlotModal(slotKey) {
             primary: 'Primary', secondary: 'Secondary', aura: 'Aura', charm: 'Charm'
         };
         const gearSlot = slotMap[slotKey];
-        items = items.filter(item => item.slot === gearSlot);
+        items = items.filter(item => item && item.slot === gearSlot);
     }
 
-    // Render items
     renderModalItems(items, searchInput ? searchInput.value : '');
 
-    // Set up search
     if (searchInput) {
         searchInput.oninput = function () {
             const searchTerm = this.value.toLowerCase();
             const filteredSearch = items.filter(item =>
-                item.name.toLowerCase().includes(searchTerm)
+                item && item.name && item.name.toLowerCase().includes(searchTerm)
             );
             renderModalItems(filteredSearch, searchTerm);
         };
@@ -911,12 +1409,14 @@ function renderModalItems(items, searchTerm = '') {
     if (!resultsDiv) return;
     resultsDiv.innerHTML = '';
 
-    if (items.length === 0) {
+    if (!items || items.length === 0) {
         resultsDiv.innerHTML = '<div class="slot-modal-empty">No items found</div>';
         return;
     }
 
     items.forEach(item => {
+        if (!item) return;
+
         const itemDiv = document.createElement('div');
         itemDiv.className = 'smi';
 
@@ -925,41 +1425,63 @@ function renderModalItems(items, searchTerm = '') {
             .join(' ');
 
         itemDiv.innerHTML = `
-            <span class="smi-name">${item.name}</span>
-            <span class="smi-level">Lvl ${item.lvl}</span>
+            <span class="smi-name">${item.name || 'Unknown'}</span>
+            <span class="smi-level">Lvl ${item.lvl || '?'}</span>
             <span class="smi-stats">${statsStr}</span>
         `;
 
         itemDiv.addEventListener('click', () => {
-            if (window.equipItem) {
-                // This is for Current Gear; for Loadout Builder we need a different handler.
-                // We'll check the context: if modal opened from Loadout Builder, we need to update loadout.
-                // For simplicity, we'll let the caller pass a callback.
-                // We'll implement a callback mechanism.
-                if (window.onModalItemSelect) {
-                    window.onModalItemSelect(currentModalSlot, item);
-                } else {
-                    // Default behavior for Current Gear
-                    window.equipItem(currentModalSlot, item);
-                    renderCurrentGear(window.getCurrentGear());
+            if (currentModalCallback) {
+                currentModalCallback(currentModalSlot, item);
+            } else if (currentModalContext === 'currentGear' && window.equipItem) {
+                window.equipItem(currentModalSlot, item);
+                const globalTier = getCurrentTier();
+                if (window.setSlotTier) {
+                    window.setSlotTier(currentModalSlot, globalTier);
                 }
-                const modal = document.getElementById('slot-modal');
-                if (modal) modal.style.display = 'none';
+                renderCurrentGear(window.getCurrentGear());
             }
+
+            const modal = document.getElementById('slot-modal');
+            if (modal) modal.style.display = 'none';
+
+            currentModalCallback = null;
+            currentModalContext = null;
         });
 
         resultsDiv.appendChild(itemDiv);
     });
 }
-function formatItemStats(item, tier) {
-    let stats = item.stats || {};
-    if (tier === 'blessed' && item.blessed) stats = item.blessed;
-    else if (tier === 'godly' && item.godly) stats = item.godly;
 
-    return Object.entries(stats)
-        .map(([k, v]) => `${k}:${v}`)
-        .join(' ');
-}
+// ==================== TOOLTIP FUNCTIONS ====================
+
+window.showWornEffectTooltip = function (name, description) {
+    const tooltip = document.getElementById('gear-tooltip');
+    if (!tooltip) return;
+
+    tooltip.innerHTML = `
+        <div class="tt-name">${name}</div>
+        <div class="tt-worn-note">${description}</div>
+    `;
+
+    tooltip.style.display = 'block';
+
+    document.addEventListener('mousemove', function positionTooltip(e) {
+        tooltip.style.left = (e.pageX + 15) + 'px';
+        tooltip.style.top = (e.pageY - 30) + 'px';
+    }, { once: true });
+};
+
+window.hideTooltip = function () {
+    const tooltip = document.getElementById('gear-tooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    }
+};
+
+window.showWornEffectDetails = function (effectName) {
+    showMessage(`Detailed information for ${effectName} - coming soon!`, true);
+};
 
 window.toggleOptimizePanel = function () {
     const panelBody = document.getElementById('optimize-panel-body');
@@ -995,29 +1517,76 @@ function adjustAscOptLayout() {
 
 window.adjustAscOptLayout = adjustAscOptLayout;
 
-// Global assignments for HTML onclick handlers
+// ==================== CLEAR FUNCTIONS ====================
+
+window.clearCurrentGear = function () {
+    if (confirm('Clear all current gear?')) {
+        const slots = [
+            'head', 'neck', 'chest', 'back', 'arms', 'hands', 'waist',
+            'legs', 'feet', 'wrist', 'ring1', 'ring2', 'primary', 'secondary',
+            'aura', 'charm'
+        ];
+        slots.forEach(slot => {
+            window.unequipItem(slot);
+            setSlotTier(slot, 'base');
+        });
+        renderCurrentGear(window.getCurrentGear());
+        showMessage('Current gear cleared', true);
+    }
+};
+
+window.clearLoadoutBuilder = function () {
+    if (confirm('Clear loadout builder?')) {
+        window.lastOptimizerResult = null;
+        const slots = [
+            'head', 'neck', 'chest', 'back', 'arms', 'hands', 'waist',
+            'legs', 'feet', 'wrist', 'ring1', 'ring2', 'primary', 'secondary',
+            'aura', 'charm'
+        ];
+        slots.forEach(slot => setSlotTier(slot, 'base'));
+        renderEmptyLoadoutBuilder();
+        showMessage('Loadout builder cleared', true);
+    }
+};
+
+// ==================== GLOBAL ASSIGNMENTS ====================
 window.toggleGearDb = toggleGearDatabase;
 window.resetWeights = window.resetWeights || function () { console.log("resetWeights called"); };
-window.setTier = window.setTier || function (tier) { console.log("setTier called:", tier); };
-window.toggleAscPanel = function () {
-    const panelBody = document.getElementById('asc-panel-body');
-    const chevron = document.getElementById('asc-panel-chevron');
-    if (!panelBody || !chevron) return;
-
-    const isVisible = panelBody.style.display !== 'none';
-    panelBody.style.display = isVisible ? 'none' : 'block';
-    chevron.style.transform = isVisible ? 'rotate(-90deg)' : 'rotate(0deg)';
-
-    adjustAscOptLayout();
-};
+window.setSlotTier = setSlotTier;
+window.toggleAscPanel = toggleAscensionsPanel;
 window.optimizeAndScroll = window.optimizeAndScroll || function () {
-    console.log("optimizeAndScroll called - to be implemented");
+    console.log("optimizeAndScroll called");
     showMessage("Optimizer coming soon!", true);
 };
 window.renderGearList = renderGearList;
 window.showMessage = showMessage;
 window.adjustPanelLayout = adjustPanelLayout;
 window.renderEmptyLoadoutBuilder = renderEmptyLoadoutBuilder;
+window.showWornEffectTooltip = window.showWornEffectTooltip;
+window.hideTooltip = window.hideTooltip;
+window.showWornEffectDetails = window.showWornEffectDetails;
+window.openSlotModal = window.openSlotModal;
+window.closeModal = function () {
+    const modal = document.getElementById('slot-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        currentModalCallback = null;
+        currentModalContext = null;
+    }
+};
+window.clearCurrentGear = window.clearCurrentGear;
+window.clearLoadoutBuilder = window.clearLoadoutBuilder;
+
+window.setTier = function (tier) {
+    console.log("setTier called:", tier);
+
+    document.querySelectorAll('.tier-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.getElementById(`tier-${tier}`)?.classList.add('active');
+
+    showMessage(`New items will be placed as ${tier} tier. Use slot dropdowns to change existing items.`, true);
+};
 
 // ==================== EXPORTS ====================
 export {
