@@ -1265,3 +1265,28 @@ input[type=number] {
     background: var(--panel-bg-hover);
     transform: translateY(-2px);
 }
+
+#asc-opt-row {
+    transition: grid-template-columns 0.2s ease;
+}
+
+.gear-item-img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.gear-stats-list {
+    list-style-type: disc;
+    padding-left: 20px;
+    margin: 4px 0;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+.gear-stats-list li {
+    margin-bottom: 2px;
+}

@@ -5,17 +5,151 @@ import {
     showMessage,
     renderClassBar,
     renderClassDescription,
-    renderProficiencies,
+    renderProficiencyEditor,
     renderAscensions,
     toggleAscensionsPanel,
     renderLoadoutBuilder,
-    renderCurrentGear,          // <-- added
-    renderStatWeightEditors      // <-- added
+    renderEmptyLoadoutBuilder,
+    renderCurrentGear,
+    renderStatWeightEditors,
 } from './uiRenderer.js';
-import { getState, setClass } from './characterState.js';
+import { getState, setClass, setProficiencies, getCurrentGear, equipItem, unequipItem } from './characterState.js';
+window.equipItem = equipItem;
+window.unequipItem = unequipItem;
+window.getCurrentGear = getCurrentGear;
 import AscendencyData from './Ascendency_Data.js';
 import OptimizerEngine from './OptimizerEngine.js';
 import { gearData } from './gear-data-with-effects.js';
+window.gearData = gearData;
+import { ITEM_IMAGES } from './itemImages.js';
+window.ITEM_IMAGES = ITEM_IMAGES;
+window.equipItem = equipItem;
+window.unequipItem = unequipItem;
+window.getCurrentGear = getCurrentGear;
+
+let currentProficiencyAllocations = {};
+// Initialize allocations based on base proficiencies (all zeros)
+function initializeAllocations(baseProfs) {
+    const alloc = {};
+    for (let key in baseProfs) {
+        alloc[key] = 0;
+    }
+    return alloc;
+}
+// ===== GEAR DATABASE FILTERING =====
+window.filterAndRenderGearList = function () {
+    const search = document.getElementById('filter-name')?.value.toLowerCase() || '';
+    const slot = document.getElementById('filter-slot')?.value || '';
+    // Filter gearData (global)
+    const filtered = gearData.filter(item => {
+        const matchesSearch = item.name.toLowerCase().includes(search);
+        const matchesSlot = slot === '' || item.slot === slot;
+        return matchesSearch && matchesSlot;
+    });
+    renderGearList(filtered);
+};
+
+window.clearAllFilters = function () {
+    const nameInput = document.getElementById('filter-name');
+    const slotSelect = document.getElementById('filter-slot');
+    if (nameInput) nameInput.value = '';
+    if (slotSelect) slotSelect.value = '';
+    filterAndRenderGearList();
+};
+
+// Update an allocation and recalculate total proficiencies
+function updateProficiencyAllocation(profKey, delta) {
+    // Get current allocation for this key
+    const oldAlloc = currentProficiencyAllocations[profKey] || 0;
+    const newAlloc = oldAlloc + delta;
+    if (newAlloc < 0) return; // Can't go below zero
+
+    // Calculate sum of all allocations after change
+    const oldSum = Object.values(currentProficiencyAllocations).reduce((a, b) => a + b, 0);
+    const newSum = oldSum - oldAlloc + newAlloc;
+    const levelInput = document.getElementById('char-level');
+    const currentLevel = levelInput ? parseInt(levelInput.value) || 35 : 35;
+    const maxPoints = calculateProficiencyPoints(currentLevel);
+    if (newSum > maxPoints) return;
+
+    // Update the allocation
+    currentProficiencyAllocations[profKey] = newAlloc;
+
+    // Get base proficiencies for current class
+    const state = getState();
+    const className = state.className;
+    const baseProfs = CLASS_PROFICIENCIES[className] || {};
+
+    // Compute new total proficiencies (base + allocated)
+    const totalProfs = {};
+    for (let key in baseProfs) {
+        totalProfs[key] = baseProfs[key] + (currentProficiencyAllocations[key] || 0);
+    }
+
+    // Save to character state
+    setProficiencies(totalProfs);
+
+    // Re-render the editor with updated values
+    const pointsRemaining = TOTAL_ALLOCATION_POINTS - newSum;
+    renderProficiencyEditor(
+        baseProfs,
+        currentProficiencyAllocations,
+        maxPoints - newSum,  // points remaining
+        maxPoints,
+        updateProficiencyAllocation
+    );
+}
+// Calculate total proficiency points based on character level
+function calculateProficiencyPoints(level) {
+    // Base 10 at creation, +1 every other level starting at level 3
+    // Formula: 10 + floor((level - 1) / 2)
+    return 10 + Math.floor((level - 1) / 2);
+}
+
+// Called when character level changes
+function updateProficiencyFromLevel() {
+    const levelInput = document.getElementById('char-level');
+    if (!levelInput) return;
+
+    const level = parseInt(levelInput.value) || 1;
+    const newTotalPoints = calculateProficiencyPoints(level);
+
+    // Update the global constant? No, we'll store current total points separately.
+    // But we need to use this new total in the editor. We'll pass it dynamically.
+
+    // Get current class and base proficiencies
+    const state = getState();
+    const className = state.className;
+    const baseProfs = CLASS_PROFICIENCIES[className] || {};
+
+    // Reset allocations to zero (simplest approach when level changes)
+    currentProficiencyAllocations = initializeAllocations(baseProfs);
+
+    // Compute total proficiencies (base + 0)
+    const totalProfs = {};
+    for (let key in baseProfs) {
+        totalProfs[key] = baseProfs[key];
+    }
+    setProficiencies(totalProfs);
+
+    // Render the editor with the new total points
+    const pointsRemaining = newTotalPoints; // all points available
+    renderProficiencyEditor(
+        baseProfs,
+        currentProficiencyAllocations,
+        pointsRemaining,
+        newTotalPoints,  // pass the dynamic total
+        updateProficiencyAllocation
+    );
+
+    // Optional: show a message that allocations have been reset
+    showMessage(`Proficiency points reset to ${newTotalPoints} for level ${level}`, true);
+}
+
+// Make globally accessible for HTML oninput
+window.onCharLevelChange = function () {
+    updateProficiencyFromLevel();
+};
 
 // ==================== DATA ====================
 const ERENSHOR_CLASSES = [
@@ -91,9 +225,38 @@ function handleClassSelection(className) {
     renderStatWeightEditors(currentStatWeights, (newWeights) => {
         currentStatWeights = newWeights;
         console.log('Stat weights updated:', currentStatWeights);
+        if (window.updateCurrentGearScore) window.updateCurrentGearScore();
     });
 
-    renderProficiencies(CLASS_PROFICIENCIES[className] || {});
+    // ===== NEW PROFICIENCY EDITOR CODE =====
+    // Get base proficiencies for the class
+    const baseProfs = CLASS_PROFICIENCIES[className] || {};
+
+    // Reset allocations for the new class
+    currentProficiencyAllocations = initializeAllocations(baseProfs);
+
+    // Compute initial totals (base + 0)
+    const totalProfs = {};
+    for (let key in baseProfs) {
+        totalProfs[key] = baseProfs[key] + (currentProficiencyAllocations[key] || 0);
+    }
+    setProficiencies(totalProfs);
+
+    // Render the new editor
+    // Get current level from input
+    const levelInput = document.getElementById('char-level');
+    const currentLevel = levelInput ? parseInt(levelInput.value) || 35 : 35;
+    const totalPoints = calculateProficiencyPoints(currentLevel);
+
+    renderProficiencyEditor(
+        baseProfs,
+        currentProficiencyAllocations,
+        totalPoints,  // all points available
+        totalPoints,
+        updateProficiencyAllocation
+    );
+    // ===== END NEW CODE =====
+
     const ascensions = getAscensionsForClass(className);
     renderAscensions(ascensions);
 
@@ -226,6 +389,48 @@ function initializeApp() {
 
     setupEventListeners();
     handleClassSelection('Paladin');
+
+    // === TUTORIAL PANEL TOGGLE ===
+    const tutorialHeader = document.getElementById('tutorial-header');
+    if (tutorialHeader) {
+        tutorialHeader.addEventListener('click', function () {
+            const tutorialBody = this.nextElementSibling;
+            const chevron = this.querySelector('.chevron');
+            if (tutorialBody.style.display === 'none') {
+                tutorialBody.style.display = 'block';
+                chevron.textContent = '▼ hide';
+            } else {
+                tutorialBody.style.display = 'none';
+                chevron.textContent = '▶ show';
+            }
+        });
+    }
+
+    // === STAT PANEL TOGGLE ===
+    const statHeader = document.getElementById('stat-panel-header');
+    if (statHeader) {
+        statHeader.addEventListener('click', window.toggleStatPanel);
+    }
+
+    // === OPTIMIZE PANEL TOGGLE ===
+    const optimizeHeader = document.getElementById('optimize-panel-header');
+    if (optimizeHeader) {
+        optimizeHeader.addEventListener('click', window.toggleOptimizePanel);
+    }
+
+    // === INITIAL LAYOUT ADJUSTMENTS ===
+    window.adjustPanelLayout();        // top row (Stat + Prof)
+    window.adjustAscOptLayout();       // Ascensions + Optimize row
+
+    // === PROFICIENCY PANEL INIT ===
+    updateProficiencyFromLevel();
+
+    // === RENDER CURRENT GEAR (initially empty) ===
+    renderCurrentGear(getCurrentGear());
+    // Render empty loadout builder initially
+    renderEmptyLoadoutBuilder();
+    filterAndRenderGearList();
 }
 
+// Start the app
 initializeApp();

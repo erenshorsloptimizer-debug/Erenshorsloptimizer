@@ -1,6 +1,8 @@
 // uiRenderer.js
 // This file ONLY handles displaying things on screen
 
+import { BLESSED_SPARKLE, GODLY_SPARKLE } from './itemImages.js';
+
 // Helper function (private - not exported)
 function getElement(id) {
     const element = document.getElementById(id);
@@ -8,6 +10,13 @@ function getElement(id) {
         console.warn(`Element with id "${id}" not found`);
     }
     return element;
+}
+
+// Helper to get sparkle based on tier (for loadout builder)
+function getTierSparkle(tier) {
+    if (tier === 'blessed') return BLESSED_SPARKLE;
+    if (tier === 'godly') return GODLY_SPARKLE;
+    return null;
 }
 
 // ==================== EXPORTED FUNCTIONS ====================
@@ -31,6 +40,24 @@ function showMessage(message, isWarning = false) {
     setTimeout(() => {
         msgElement.remove();
     }, 5000);
+}
+
+// Helper to get item image src (base64) or empty string if not found
+function getItemImageSrc(item) {
+    if (!item) return '';
+    const name = item.name;
+    const src = (window.ITEM_IMAGES && window.ITEM_IMAGES[name]) ? window.ITEM_IMAGES[name] : '';
+    // Optional debug logs (commented out to reduce noise)
+    // if (!src && window.ITEM_IMAGES) {
+    //     console.log(`❌ No image for: "${name}"`);
+    //     if (!window._loggedKeys) {
+    //         window._loggedKeys = true;
+    //         console.log('Sample ITEM_IMAGES keys:', Object.keys(window.ITEM_IMAGES).slice(0, 5));
+    //     }
+    // } else if (src) {
+    //     console.log(`✅ Image found for: "${name}"`);
+    // }
+    return src;
 }
 
 function renderClassBar(classes, activeClass) {
@@ -129,7 +156,7 @@ function renderProficiencies(proficiencies) {
     Object.entries(proficiencies).forEach(([prof, value]) => {
         if (value > 0) {
             const row = document.createElement('tr');
-            row.style.borderBottom = '1px solid var(--border-light)';
+            row.style.borderBottom = '1px solid var(--border)';
             row.innerHTML = `
                 <td style="padding:8px 4px; color:var(--text-bright)">${profNames[prof] || prof}</td>
                 <td style="padding:8px 4px; text-align:center; font-weight:bold;">${value}</td>
@@ -142,20 +169,48 @@ function renderProficiencies(proficiencies) {
     table.appendChild(tableElem);
 }
 
-function toggleProficienciesPanel() {
-    const panelBody = getElement('prof-panel-body');
-    const chevron = getElement('prof-panel-chevron');
-
+window.toggleProfPanel = function () {
+    const panelBody = document.getElementById('prof-panel-body');
+    const chevron = document.getElementById('prof-panel-chevron');
     if (!panelBody || !chevron) return;
 
     const isVisible = panelBody.style.display !== 'none';
+    panelBody.style.display = isVisible ? 'none' : 'block';
+    chevron.textContent = isVisible ? '▶' : '▼';
+    chevron.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(0deg)';
 
-    if (isVisible) {
-        panelBody.style.display = 'none';
-        chevron.textContent = '▶';
+    adjustPanelLayout();
+};
+
+window.toggleStatPanel = function () {
+    const panelBody = document.getElementById('stat-panel-body');
+    const chevron = document.getElementById('stat-panel-chevron');
+    if (!panelBody || !chevron) return;
+
+    const isVisible = panelBody.style.display !== 'none';
+    panelBody.style.display = isVisible ? 'none' : 'block';
+    chevron.textContent = isVisible ? '▶' : '▼';
+
+    adjustPanelLayout();
+};
+
+function adjustPanelLayout() {
+    const row = document.querySelector('.row');
+    if (!row) return;
+
+    const statBody = document.getElementById('stat-panel-body');
+    const profBody = document.getElementById('prof-panel-body');
+    const statOpen = statBody ? statBody.style.display !== 'none' : true;
+    const profOpen = profBody ? profBody.style.display !== 'none' : true;
+
+    if (statOpen && profOpen) {
+        row.style.gridTemplateColumns = '1fr 1fr';
+    } else if (statOpen && !profOpen) {
+        row.style.gridTemplateColumns = '1fr auto';
+    } else if (!statOpen && profOpen) {
+        row.style.gridTemplateColumns = 'auto 1fr';
     } else {
-        panelBody.style.display = 'block';
-        chevron.textContent = '▼';
+        row.style.gridTemplateColumns = 'auto auto';
     }
 }
 
@@ -230,7 +285,7 @@ function renderStatWeightEditors(weights, onChange) {
         { key: 'pr', label: 'Poison Resist' },
         { key: 'vr', label: 'Void Resist' },
         { key: 'res', label: 'All Resists' },
-        { key: 'effect', label: 'Worn Effect' }  // added effect
+        { key: 'effect', label: 'Worn Effect' }
     ];
 
     allStats.forEach(stat => {
@@ -274,6 +329,162 @@ function renderStatWeightEditors(weights, onChange) {
     });
 
     panel.appendChild(resetBtn);
+}
+
+export function renderProficiencyEditor(baseProfs, allocations, pointsRemaining, totalPoints, onAllocate) {
+    const container = document.getElementById('prof-table');
+    if (!container) {
+        console.warn("prof-table not found");
+        return;
+    }
+
+    container.innerHTML = ''; // Clear old content
+
+    // Create a table
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+
+    // Table header
+    table.innerHTML = `
+        <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+                <th style="text-align:left; padding:8px 4px;">Proficiency</th>
+                <th style="text-align:center; padding:8px 4px;">Base</th>
+                <th style="text-align:center; padding:8px 4px;">Allocated</th>
+                <th style="text-align:center; padding:8px 4px;">Total</th>
+                <th style="text-align:center; padding:8px 4px;"></th> <!-- for buttons -->
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+
+    // Map proficiency keys to display names
+    const profNames = {
+        physicality: 'Physicality',
+        hardiness: 'Hardiness',
+        finesse: 'Finesse',
+        defense: 'Defense',
+        arcanism: 'Arcanism',
+        restoration: 'Restoration',
+        mind: 'Mind'
+    };
+
+    // Create a row for each proficiency
+    Object.entries(baseProfs).forEach(([key, baseValue]) => {
+        const allocated = allocations[key] || 0;
+        const total = baseValue + allocated;
+
+        const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid var(--border-light)';
+
+        // Proficiency name
+        const nameCell = document.createElement('td');
+        nameCell.style.padding = '8px 4px';
+        nameCell.style.color = 'var(--text-bright)';
+        nameCell.textContent = profNames[key] || key;
+        row.appendChild(nameCell);
+
+        // Base value
+        const baseCell = document.createElement('td');
+        baseCell.style.padding = '8px 4px';
+        baseCell.style.textAlign = 'center';
+        baseCell.style.fontWeight = 'bold';
+        baseCell.textContent = baseValue;
+        row.appendChild(baseCell);
+
+        // Allocated value (with buttons)
+        const allocCell = document.createElement('td');
+        allocCell.style.padding = '8px 4px';
+        allocCell.style.textAlign = 'center';
+
+        // Container for allocated number and buttons
+        const allocDiv = document.createElement('div');
+        allocDiv.style.display = 'flex';
+        allocDiv.style.alignItems = 'center';
+        allocDiv.style.justifyContent = 'center';
+        allocDiv.style.gap = '4px';
+
+        // Minus button
+        const minusBtn = document.createElement('button');
+        minusBtn.textContent = '−';
+        minusBtn.style.width = '24px';
+        minusBtn.style.height = '24px';
+        minusBtn.style.background = 'var(--surface2)';
+        minusBtn.style.border = '1px solid var(--border)';
+        minusBtn.style.color = 'var(--text-dim)';
+        minusBtn.style.cursor = 'pointer';
+        minusBtn.style.borderRadius = '3px';
+        minusBtn.style.fontWeight = 'bold';
+        minusBtn.disabled = allocated === 0;
+        minusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onAllocate(key, -1);
+        });
+        allocDiv.appendChild(minusBtn);
+
+        // Allocated number
+        const allocSpan = document.createElement('span');
+        allocSpan.style.minWidth = '30px';
+        allocSpan.style.textAlign = 'center';
+        allocSpan.style.fontWeight = 'bold';
+        allocSpan.textContent = allocated;
+        allocDiv.appendChild(allocSpan);
+
+        // Plus button
+        const plusBtn = document.createElement('button');
+        plusBtn.textContent = '+';
+        plusBtn.style.width = '24px';
+        plusBtn.style.height = '24px';
+        plusBtn.style.background = 'var(--surface2)';
+        plusBtn.style.border = '1px solid var(--border)';
+        plusBtn.style.color = 'var(--text-dim)';
+        plusBtn.style.cursor = 'pointer';
+        plusBtn.style.borderRadius = '3px';
+        plusBtn.style.fontWeight = 'bold';
+        plusBtn.disabled = pointsRemaining === 0;
+        plusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onAllocate(key, 1);
+        });
+        allocDiv.appendChild(plusBtn);
+
+        allocCell.appendChild(allocDiv);
+        row.appendChild(allocCell);
+
+        // Total value
+        const totalCell = document.createElement('td');
+        totalCell.style.padding = '8px 4px';
+        totalCell.style.textAlign = 'center';
+        totalCell.style.fontWeight = 'bold';
+        totalCell.style.color = 'var(--gold)';
+        totalCell.textContent = total;
+        row.appendChild(totalCell);
+
+        // Empty cell for alignment (keeps table consistent)
+        const emptyCell = document.createElement('td');
+        emptyCell.style.padding = '8px 4px';
+        row.appendChild(emptyCell);
+
+        tbody.appendChild(row);
+    });
+
+    // Add a row for points remaining
+    const remainingRow = document.createElement('tr');
+    const remainingCell = document.createElement('td');
+    remainingCell.colSpan = 5;
+    remainingCell.style.padding = '12px 4px 4px';
+    remainingCell.style.textAlign = 'right';
+    remainingCell.style.fontWeight = 'bold';
+    remainingCell.style.color = pointsRemaining === 0 ? 'var(--red-light)' : 'var(--text-dim)';
+    remainingCell.innerHTML = `Points Remaining: <span style="font-size:1.1rem; color:var(--gold-light);">${pointsRemaining}</span> / ${totalPoints}`;
+    remainingRow.appendChild(remainingCell);
+    tbody.appendChild(remainingRow);
+
+    container.appendChild(table);
 }
 
 function toggleAscensionsPanel() {
@@ -325,8 +536,13 @@ function renderGearList(items) {
         const card = document.createElement('div');
         card.className = 'gear-card';
 
+        // Determine sparkle for blessed/godly
+        const sparkleHtml = item.blessed ? `<img src="${BLESSED_SPARKLE}" style="width:24px; height:24px; margin-left:4px; vertical-align:middle;" title="Blessed">` :
+            (item.godly ? `<img src="${GODLY_SPARKLE}" style="width:24px; height:24px; margin-left:4px; vertical-align:middle;" title="Godly">` : '');
+
+        // Stats as bulleted list
         const statsHtml = Object.entries(item.stats)
-            .map(([stat, value]) => `<span class="gear-stat">${stat.toUpperCase()}: ${value}</span>`)
+            .map(([stat, value]) => `<li>${stat.toUpperCase()}: ${value}</li>`)
             .join('');
 
         const relicTag = item.relic ? '<span class="relic-tag">✨ Relic</span>' : '';
@@ -341,16 +557,21 @@ function renderGearList(items) {
         const slotKey = item.slot.toLowerCase();
 
         card.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:start;">
-                <span class="gear-name">${item.name}</span>
-                ${relicTag}
-            </div>
-            <div class="gear-slot-level">
-                <span class="gear-slot">${item.slot}</span>
-                <span class="gear-level">Lvl ${item.lvl}</span>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:8px;">
+                <img src="${getItemImageSrc(item)}" alt="${item.name}" class="gear-item-img" style="width:48px; height:48px; object-fit:contain; image-rendering:pixelated;">
+                <div style="width:100%;">
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <span class="gear-name">${item.name} ${sparkleHtml}</span>
+                        ${relicTag}
+                    </div>
+                    <div class="gear-slot-level">
+                        <span class="gear-slot">${item.slot}</span>
+                        <span class="gear-level">Lvl ${item.lvl}</span>
+                    </div>
+                </div>
             </div>
             <div class="gear-stats">
-                ${statsHtml || '<span class="note">No stats</span>'}
+                <ul class="gear-stats-list">${statsHtml || '<li>No stats</li>'}</ul>
             </div>
             ${qualityHtml}
             <button class="equip-btn" 
@@ -399,21 +620,22 @@ function renderCurrentGear(gear) {
 
     panel.innerHTML = '';
 
+    // Header
     const header = document.createElement('div');
     header.className = 'panel-header';
     header.innerHTML = '<h2>⚔️ Current Gear</h2>';
     panel.appendChild(header);
 
-    const body = document.createElement('div');
-    body.className = 'panel-body';
+    // Score bar
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'score-bar';
+    scoreDiv.id = 'current-gear-score';
+    panel.appendChild(scoreDiv);
 
-    const hasGear = Object.values(gear).some(item => item !== null);
-
-    if (!hasGear) {
-        body.innerHTML = '<p class="note" style="padding:1rem; text-align:center;">No gear equipped. Click "Equip" on items in the database below.</p>';
-        panel.appendChild(body);
-        return;
-    }
+    // Grid container
+    const grid = document.createElement('div');
+    grid.className = 'result-grid';
+    panel.appendChild(grid);
 
     const slots = [
         { key: 'head', label: 'Head' },
@@ -434,46 +656,69 @@ function renderCurrentGear(gear) {
         { key: 'charm', label: 'Charm' }
     ];
 
-    const grid = document.createElement('div');
-    grid.style.display = 'grid';
-    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
-    grid.style.gap = '10px';
-    grid.style.padding = '10px';
+    function updateTotalScore() {
+        const tier = document.querySelector('.tier-btn.active')?.id?.replace('tier-', '') || 'base';
+        const statWeights = window.currentStatWeights || {};
+        const total = window.computeLoadoutScore(gear, tier, statWeights);
+        scoreDiv.innerHTML = `<span class="score-label">Current Gear Score</span><span class="score-value">${Math.round(total)}</span>`;
+    }
 
     slots.forEach(slot => {
         const item = gear[slot.key];
         const slotDiv = document.createElement('div');
-        slotDiv.className = 'gear-slot';
-        slotDiv.style.background = 'var(--panel-bg-light)';
-        slotDiv.style.border = '1px solid var(--border)';
-        slotDiv.style.borderRadius = '4px';
-        slotDiv.style.padding = '8px';
+        slotDiv.className = 'result-slot';
+        slotDiv.setAttribute('data-slot', slot.key);
+        slotDiv.style.cursor = 'pointer';
+
+        // Slot header
+        const slotHeader = document.createElement('div');
+        slotHeader.className = 'result-slot-header';
+        slotHeader.innerHTML = `
+            <span class="result-slot-name">${slot.label}</span>
+            <span class="edit-icon" style="font-size:0.8rem; opacity:0.7;">✎</span>
+        `;
+        slotDiv.appendChild(slotHeader);
 
         if (item) {
-            const statsHtml = item.stats ? Object.entries(item.stats)
-                .map(([stat, val]) => `<span style="font-size:0.7rem; color:var(--text-dim); display:block;">${stat.toUpperCase()}: ${val}</span>`)
-                .join('') : '';
+            // Image HTML
+            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:32px; height:32px; object-fit:contain; image-rendering:pixelated; margin-right:8px;">` : '';
 
-            slotDiv.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:bold; color:var(--text-bright); font-size:0.8rem;">${slot.label}</span>
-                    <button class="unequip-btn" data-slot="${slot.key}" style="background:none; border:none; color:var(--red); cursor:pointer; font-size:1rem;">✕</button>
-                </div>
-                <div style="font-size:0.75rem; color:var(--text-bright); margin:4px 0;">${item.name}</div>
-                ${statsHtml}
-            `;
+            // --- FIXED SPARKLE LOGIC ---
+            // Only show sparkle if blessed/godly object has actual stats
+            const hasBlessed = item.blessed && typeof item.blessed === 'object' && Object.keys(item.blessed).length > 0;
+            const hasGodly = item.godly && typeof item.godly === 'object' && Object.keys(item.godly).length > 0;
+            const sparkleHtml = hasBlessed ? `<img src="${BLESSED_SPARKLE}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="Blessed">` :
+                (hasGodly ? `<img src="${GODLY_SPARKLE}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="Godly">` : '');
+            // -------------------------
+
+            // Name with sparkle
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'result-item-name';
+            nameDiv.innerHTML = `${imageHtml} ${item.name} ${sparkleHtml}`;
+            slotDiv.appendChild(nameDiv);
+
+            // Stats (base)
+            const statsDiv = document.createElement('div');
+            statsDiv.className = 'result-item-stats';
+            statsDiv.textContent = formatItemStats(item, 'base');
+            slotDiv.appendChild(statsDiv);
         } else {
-            slotDiv.innerHTML = `
-                <div style="font-weight:bold; color:var(--text-dim); font-size:0.8rem;">${slot.label}</div>
-                <div style="font-size:0.7rem; color:var(--text-dim); font-style:italic;">Empty</div>
-            `;
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'result-empty';
+            emptyDiv.textContent = 'Empty';
+            slotDiv.appendChild(emptyDiv);
         }
+
+        slotDiv.addEventListener('click', (e) => {
+            window.openSlotModal(slot.key);
+        });
 
         grid.appendChild(slotDiv);
     });
 
-    body.appendChild(grid);
-    panel.appendChild(body);
+    panel.appendChild(grid);
+    updateTotalScore();
+    window.updateCurrentGearScore = updateTotalScore;
 }
 
 function renderLoadoutBuilder(loadout, candidates, tier, statWeights) {
@@ -483,47 +728,43 @@ function renderLoadoutBuilder(loadout, candidates, tier, statWeights) {
 
     panel.innerHTML = '';
 
+    // Header
     const header = document.createElement('div');
     header.className = 'panel-header';
     header.innerHTML = '<h2>Loadout Builder</h2>';
     panel.appendChild(header);
 
+    // Score bar
     const scoreDiv = document.createElement('div');
     scoreDiv.className = 'score-bar';
     scoreDiv.id = 'loadout-total-score';
     panel.appendChild(scoreDiv);
 
+    // Grid container
     const grid = document.createElement('div');
     grid.className = 'result-grid';
     panel.appendChild(grid);
 
     const slots = Object.keys(candidates);
 
+    // Function to update total score (called after changes)
     function updateTotalScore() {
         const currentLoadout = {};
         const relicNames = new Set();
         let duplicateRelic = false;
 
         slots.forEach(slot => {
-            const select = document.getElementById(`slot-select-${slot}`);
-            if (select) {
-                const selectedName = select.value;
-                const item = candidates[slot]?.find(i => i.name === selectedName) || null;
+            const slotDiv = document.querySelector(`.result-slot[data-slot="${slot}"]`);
+            if (slotDiv) {
+                const itemName = slotDiv.dataset.itemName;
+                const item = candidates[slot]?.find(i => i.name === itemName) || null;
                 currentLoadout[slot] = item;
                 if (item && item.relic) {
-                    if (relicNames.has(item.name)) {
-                        duplicateRelic = true;
-                    }
+                    if (relicNames.has(item.name)) duplicateRelic = true;
                     relicNames.add(item.name);
                 }
             } else {
                 currentLoadout[slot] = loadout[slot];
-                if (loadout[slot] && loadout[slot].relic) {
-                    if (relicNames.has(loadout[slot].name)) {
-                        duplicateRelic = true;
-                    }
-                    relicNames.add(loadout[slot].name);
-                }
             }
         });
 
@@ -535,58 +776,181 @@ function renderLoadoutBuilder(loadout, candidates, tier, statWeights) {
         scoreDiv.innerHTML = scoreHtml;
     }
 
+    // Create slot elements
     slots.forEach(slot => {
+        const item = loadout[slot]; // selected item
         const slotDiv = document.createElement('div');
         slotDiv.className = 'result-slot';
         slotDiv.setAttribute('data-slot', slot);
+        if (item) slotDiv.dataset.itemName = item.name; // store for score update
+        slotDiv.style.cursor = 'pointer';
 
+        // Slot header with slot name
         const slotHeader = document.createElement('div');
         slotHeader.className = 'result-slot-header';
         slotHeader.innerHTML = `<span class="result-slot-name">${slot}</span>`;
         slotDiv.appendChild(slotHeader);
 
-        const candidatesList = candidates[slot];
-        if (!candidatesList || candidatesList.length === 0) {
-            const emptyDiv = document.createElement('div');
-            emptyDiv.className = 'result-empty';
-            emptyDiv.textContent = 'No items';
-            slotDiv.appendChild(emptyDiv);
-            grid.appendChild(slotDiv);
-            return;
-        }
+        if (item) {
+            // Image HTML
+            const imageHtml = getItemImageSrc(item) ? `<img src="${getItemImageSrc(item)}" alt="${item.name}" style="width:32px; height:32px; object-fit:contain; image-rendering:pixelated; margin-right:8px;">` : '';
 
-        const select = document.createElement('select');
-        select.id = `slot-select-${slot}`;
-        select.style.width = '100%';
-        select.style.marginBottom = '0.5rem';
+            // Sparkle for current tier (if item has blessed/godly versions)
+            const sparkleUrl = getTierSparkle(tier);
+            const sparkleHtml = sparkleUrl && (tier === 'blessed' && item.blessed || tier === 'godly' && item.godly)
+                ? `<img src="${sparkleUrl}" style="width:16px; height:16px; margin-left:4px; vertical-align:middle;" title="${tier}">`
+                : '';
 
-        candidatesList.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.name;
-            option.textContent = `${item.name} (lvl ${item.lvl})`;
-            if (loadout[slot] && loadout[slot].name === item.name) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
+            // Item name
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'result-item-name';
+            nameDiv.innerHTML = `${imageHtml} ${item.name} ${sparkleHtml}`;
+            slotDiv.appendChild(nameDiv);
 
-        select.addEventListener('change', updateTotalScore);
-        slotDiv.appendChild(select);
-
-        const currentItem = loadout[slot];
-        if (currentItem) {
+            // Stats
             const statsDiv = document.createElement('div');
             statsDiv.className = 'result-item-stats';
-            statsDiv.textContent = formatItemStats(currentItem, tier);
+            statsDiv.textContent = formatItemStats(item, tier);
             slotDiv.appendChild(statsDiv);
+        } else {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'result-empty';
+            emptyDiv.textContent = 'Empty';
+            slotDiv.appendChild(emptyDiv);
         }
+
+        // Click handler to open modal with candidate items
+        slotDiv.addEventListener('click', (e) => {
+            // Pass the candidate list for this slot
+            window.openSlotModal(slot, candidates[slot] || []);
+        });
 
         grid.appendChild(slotDiv);
     });
 
+    panel.appendChild(grid);
     updateTotalScore();
 }
 
+function renderEmptyLoadoutBuilder() {
+    const panel = document.getElementById('loadout-builder-panel');
+    if (!panel) return;
+
+    panel.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'panel-header';
+    header.innerHTML = '<h2>Loadout Builder</h2>';
+    panel.appendChild(header);
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'panel-body';
+    messageDiv.style.textAlign = 'center';
+    messageDiv.style.padding = '2rem';
+    messageDiv.style.color = 'var(--text-dim)';
+    messageDiv.style.fontStyle = 'italic';
+    messageDiv.innerHTML = 'Click "Find Best Loadout" to generate a suggested gear set.';
+    panel.appendChild(messageDiv);
+}
+
+// ==================== MODAL FUNCTIONS ====================
+let currentModalSlot = null;
+let currentModalItemList = null; // new
+
+window.openSlotModal = function (slotKey, itemList = null) {
+    currentModalSlot = slotKey;
+    currentModalItemList = itemList; // store for populate
+    const modal = document.getElementById('slot-modal');
+    if (!modal) {
+        console.error("Modal element not found");
+        return;
+    }
+    const title = document.getElementById('slot-modal-title');
+    if (title) title.textContent = `Select ${slotKey}`;
+
+    populateSlotModal(slotKey);
+    modal.style.display = 'flex';
+};
+
+function populateSlotModal(slotKey) {
+    const resultsDiv = document.getElementById('slot-modal-results');
+    const searchInput = document.getElementById('slot-modal-search');
+
+    // Use provided item list if available, otherwise fallback to all gear
+    let items = currentModalItemList || window.gearData || [];
+
+    // Filter by slot if using all gear (fallback)
+    if (!currentModalItemList) {
+        const slotMap = {
+            head: 'Head', neck: 'Neck', chest: 'Chest', back: 'Back',
+            arms: 'Arms', hands: 'Hands', waist: 'Waist', legs: 'Legs',
+            feet: 'Feet', wrist: 'Wrist', ring1: 'Ring', ring2: 'Ring',
+            primary: 'Primary', secondary: 'Secondary', aura: 'Aura', charm: 'Charm'
+        };
+        const gearSlot = slotMap[slotKey];
+        items = items.filter(item => item.slot === gearSlot);
+    }
+
+    // Render items
+    renderModalItems(items, searchInput ? searchInput.value : '');
+
+    // Set up search
+    if (searchInput) {
+        searchInput.oninput = function () {
+            const searchTerm = this.value.toLowerCase();
+            const filteredSearch = items.filter(item =>
+                item.name.toLowerCase().includes(searchTerm)
+            );
+            renderModalItems(filteredSearch, searchTerm);
+        };
+    }
+}
+
+function renderModalItems(items, searchTerm = '') {
+    const resultsDiv = document.getElementById('slot-modal-results');
+    if (!resultsDiv) return;
+    resultsDiv.innerHTML = '';
+
+    if (items.length === 0) {
+        resultsDiv.innerHTML = '<div class="slot-modal-empty">No items found</div>';
+        return;
+    }
+
+    items.forEach(item => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'smi';
+
+        const statsStr = Object.entries(item.stats || {})
+            .map(([k, v]) => `${k.toUpperCase()}+${v}`)
+            .join(' ');
+
+        itemDiv.innerHTML = `
+            <span class="smi-name">${item.name}</span>
+            <span class="smi-level">Lvl ${item.lvl}</span>
+            <span class="smi-stats">${statsStr}</span>
+        `;
+
+        itemDiv.addEventListener('click', () => {
+            if (window.equipItem) {
+                // This is for Current Gear; for Loadout Builder we need a different handler.
+                // We'll check the context: if modal opened from Loadout Builder, we need to update loadout.
+                // For simplicity, we'll let the caller pass a callback.
+                // We'll implement a callback mechanism.
+                if (window.onModalItemSelect) {
+                    window.onModalItemSelect(currentModalSlot, item);
+                } else {
+                    // Default behavior for Current Gear
+                    window.equipItem(currentModalSlot, item);
+                    renderCurrentGear(window.getCurrentGear());
+                }
+                const modal = document.getElementById('slot-modal');
+                if (modal) modal.style.display = 'none';
+            }
+        });
+
+        resultsDiv.appendChild(itemDiv);
+    });
+}
 function formatItemStats(item, tier) {
     let stats = item.stats || {};
     if (tier === 'blessed' && item.blessed) stats = item.blessed;
@@ -597,18 +961,63 @@ function formatItemStats(item, tier) {
         .join(' ');
 }
 
+window.toggleOptimizePanel = function () {
+    const panelBody = document.getElementById('optimize-panel-body');
+    const chevron = document.getElementById('optimize-panel-chevron');
+    if (!panelBody || !chevron) return;
+
+    const isVisible = panelBody.style.display !== 'none';
+    panelBody.style.display = isVisible ? 'none' : 'block';
+    chevron.textContent = isVisible ? '▶' : '▼';
+
+    adjustAscOptLayout();
+};
+
+function adjustAscOptLayout() {
+    const row = document.getElementById('asc-opt-row');
+    if (!row) return;
+
+    const ascBody = document.getElementById('asc-panel-body');
+    const optBody = document.getElementById('optimize-panel-body');
+    const ascOpen = ascBody ? ascBody.style.display !== 'none' : true;
+    const optOpen = optBody ? optBody.style.display !== 'none' : true;
+
+    if (ascOpen && optOpen) {
+        row.style.gridTemplateColumns = '1fr 1fr';
+    } else if (ascOpen && !optOpen) {
+        row.style.gridTemplateColumns = '1fr auto';
+    } else if (!ascOpen && optOpen) {
+        row.style.gridTemplateColumns = 'auto 1fr';
+    } else {
+        row.style.gridTemplateColumns = 'auto auto';
+    }
+}
+
+window.adjustAscOptLayout = adjustAscOptLayout;
+
 // Global assignments for HTML onclick handlers
 window.toggleGearDb = toggleGearDatabase;
 window.resetWeights = window.resetWeights || function () { console.log("resetWeights called"); };
 window.setTier = window.setTier || function (tier) { console.log("setTier called:", tier); };
-window.toggleProfPanel = toggleProficienciesPanel;
-window.toggleAscPanel = toggleAscensionsPanel;
+window.toggleAscPanel = function () {
+    const panelBody = document.getElementById('asc-panel-body');
+    const chevron = document.getElementById('asc-panel-chevron');
+    if (!panelBody || !chevron) return;
+
+    const isVisible = panelBody.style.display !== 'none';
+    panelBody.style.display = isVisible ? 'none' : 'block';
+    chevron.style.transform = isVisible ? 'rotate(-90deg)' : 'rotate(0deg)';
+
+    adjustAscOptLayout();
+};
 window.optimizeAndScroll = window.optimizeAndScroll || function () {
     console.log("optimizeAndScroll called - to be implemented");
     showMessage("Optimizer coming soon!", true);
 };
 window.renderGearList = renderGearList;
 window.showMessage = showMessage;
+window.adjustPanelLayout = adjustPanelLayout;
+window.renderEmptyLoadoutBuilder = renderEmptyLoadoutBuilder;
 
 // ==================== EXPORTS ====================
 export {
@@ -616,10 +1025,10 @@ export {
     renderClassBar,
     renderClassDescription,
     renderStatWeightEditors,
-    renderProficiencies,
     renderAscensions,
     toggleAscensionsPanel,
     renderLoadoutBuilder,
+    renderEmptyLoadoutBuilder,
     renderCurrentGear,
     renderGearList
 };
