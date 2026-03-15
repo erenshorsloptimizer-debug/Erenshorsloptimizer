@@ -193,3 +193,4 @@ const StatsEngine = {
         };
     }
 };
+export default StatsEngine;

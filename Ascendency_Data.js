@@ -1,3 +1,7 @@
+
+export const ascendencyData = [
+    // ... all your existing ascendency data ...
+];
 const AscendencyData = [
     {
         "id": 71342250,

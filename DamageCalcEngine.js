@@ -1,3 +1,6 @@
+import { gearData } from './gear-data-with-effects.js';
+import { ABILITIES } from './AbilityData.js';
+
 const DamageCalcEngine = {
 
     /**
@@ -145,10 +148,11 @@ const DamageCalcEngine = {
      * @returns {Object} Weapon with damage stats
      */
     getWeaponStats: function (weaponName) {
-        if (!WIKI_GEAR || !weaponName) {
+        // Use gearData instead of WIKI_GEAR
+        if (!gearData || !weaponName) {
             return { name: 'None', weapDmg: 0, weapDly: 1.5 };
         }
-        const weapon = WIKI_GEAR.find(item => item.name === weaponName && (item.slot === 'Primary' || item.slot === 'Secondary'));
+        const weapon = gearData.find(item => item.name === weaponName && (item.slot === 'Primary' || item.slot === 'Secondary'));
         if (weapon) {
             return {
                 name: weapon.name,
@@ -200,3 +204,6 @@ const DamageCalcEngine = {
         };
     }
 };
+
+// Export the engine as default so other files can import it
+export default DamageCalcEngine;

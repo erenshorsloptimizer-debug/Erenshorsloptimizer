@@ -1,4 +1,4 @@
-const ABILITIES = [
+export const ABILITIES = [
     {
         "name": "Arcane Proficiency",
         "lvl": 10,

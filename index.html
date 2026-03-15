@@ -48,14 +48,14 @@
     <!-- Stat + Proficiency Panels -->
     <div class="row">
       <div class="panel">
-        <div class="panel-header">
+        <div class="panel-header" style="cursor:pointer" id="stat-panel-header">
           <h2>Stat Priorities</h2>
-          <button class="btn btn-ghost" style="font-size:.7rem;padding:.25rem .7rem" onclick="resetWeights()">Reset
-            Defaults</button>
+          <span id="stat-panel-chevron" style="font-size:.75rem;color:var(--text-dim)">▼</span>
         </div>
-        <div class="panel-body" id="stat-tier-panel"></div>
+        <div id="stat-panel-body">
+          <div class="panel-body" id="stat-tier-panel"></div>
+        </div>
       </div>
-
       <div class="panel">
         <div class="panel-header" style="cursor:pointer" onclick="toggleProfPanel()">
           <h2>Proficiencies</h2>
@@ -70,81 +70,90 @@
         </div>
       </div>
     </div>
-
-    <!-- Ascensions Panel -->
-    <div class="panel" style="margin-bottom:2rem">
-      <div class="panel-header" style="cursor:pointer" onclick="toggleAscPanel()">
-        <h2>Ascensions</h2>
-        <span id="asc-panel-chevron"
-          style="font-size:.75rem;color:var(--text-dim);display:inline-block;transform:rotate(-90deg)">&#9660;</span>
-      </div>
-      <div id="asc-panel-body" style="display:none">
-        <div class="panel-body" id="asc-panel-inner">
-          <!-- JS will populate ascensions -->
+    <!-- Ascensions & Optimize Row -->
+    <div class="row" id="asc-opt-row">
+      <!-- Ascensions Panel -->
+      <div class="panel" style="margin-bottom:2rem">
+        <div class="panel-header" style="cursor:pointer" onclick="toggleAscPanel()">
+          <h2>Ascensions</h2>
+          <span id="asc-panel-chevron"
+            style="font-size:.75rem;color:var(--text-dim);display:inline-block;transform:rotate(-90deg)">&#9660;</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Optimize Panel -->
-    <div class="panel" style="margin-bottom:2rem">
-      <div class="panel-header">
-        <h2>Optimize</h2>
-      </div>
-      <div class="panel-body" style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start">
-
-        <div class="tier-selector" style="flex:1;min-width:220px">
-          <div
-            style="font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.12em;color:var(--text-dim);text-transform:uppercase;margin-bottom:.5rem">
-            Item Quality</div>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="tier-btn active" id="tier-base" onclick="setTier('base')">⚔ Base</button>
-            <button class="tier-btn" id="tier-blessed" onclick="setTier('blessed')">✦ Blessed</button>
-            <button class="tier-btn" id="tier-double" onclick="setTier('double')">✦✦ Godly</button>
+        <div id="asc-panel-body" style="display:none">
+          <div class="panel-body" id="asc-panel-inner">
+            <!-- JS will populate ascensions -->
           </div>
-          <p class="note" id="tier-note" style="margin-top:.5rem;font-size:.75rem">Optimizing with base item stats.</p>
         </div>
+      </div>
 
-        <div style="display:flex;flex-direction:column;gap:.6rem">
-          <div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:.4rem">
-              <label
-                style="font-size:.78rem;color:var(--text-dim);white-space:nowrap;font-family:'Cinzel',serif;letter-spacing:.08em">Gear
-                Level:</label>
-              <input type="number" id="filter-level-min" placeholder="1" min="1" max="35" oninput="onGearLevelChange()"
-                style="width:42px;text-align:center">
-              <span style="color:var(--text-dim);font-size:.8rem">–</span>
-              <input type="number" id="filter-level" placeholder="35" min="1" max="35" oninput="onGearLevelChange()"
-                style="width:42px;text-align:center">
+      <!-- Optimize Panel -->
+      <div class="panel" style="margin-bottom:2rem">
+        <div class="panel-header" style="cursor:pointer" id="optimize-panel-header">
+          <h2>Optimize</h2>
+          <span id="optimize-panel-chevron" style="font-size:.75rem;color:var(--text-dim)">▼</span>
+        </div>
+        <div id="optimize-panel-body">
+          <div class="panel-body" style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start">
+            <!-- all the existing optimize content goes here -->
+            <div class="tier-selector" style="flex:1;min-width:220px">
+              <div
+                style="font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.12em;color:var(--text-dim);text-transform:uppercase;margin-bottom:.5rem">
+                Item Quality
+              </div>
+              <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                <button class="tier-btn active" id="tier-base" onclick="setTier('base')">⚔ Base</button>
+                <button class="tier-btn" id="tier-blessed" onclick="setTier('blessed')">✦ Blessed</button>
+                <button class="tier-btn" id="tier-double" onclick="setTier('double')">✦✦ Godly</button>
+              </div>
+              <p class="note" id="tier-note" style="margin-top:.5rem;font-size:.75rem">Optimizing with base item stats.
+              </p>
             </div>
 
-            <div style="display:flex;align-items:center;gap:.4rem">
+            <div style="display:flex;flex-direction:column;gap:.6rem">
+              <div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:.4rem">
+                  <label
+                    style="font-size:.78rem;color:var(--text-dim);white-space:nowrap;font-family:'Cinzel',serif;letter-spacing:.08em">
+                    Gear Level:
+                  </label>
+                  <input type="number" id="filter-level-min" placeholder="1" min="1" max="100"
+                    oninput="onGearLevelChange()" style="width:42px;text-align:center">
+                  <span style="color:var(--text-dim);font-size:.8rem">–</span>
+                  <input type="number" id="filter-level" placeholder="100" min="1" max="100"
+                    oninput="onGearLevelChange()" style="width:42px;text-align:center">
+                </div>
+
+                <div style="display:flex;align-items:center;gap:.4rem">
+                  <label
+                    style="font-size:.78rem;color:var(--text-dim);white-space:nowrap;font-family:'Cinzel',serif;letter-spacing:.08em">
+                    Char Level:
+                  </label>
+                  <input type="number" id="char-level" placeholder="35" min="1" max="35" value="35"
+                    oninput="onCharLevelChange()" style="width:42px;text-align:center">
+                </div>
+              </div>
+
+              <p class="note" style="font-size:.72rem">Gear level range · Char level used for formula scoring</p>
+            </div>
+
+            <div id="no2h-wrap" style="display:none;flex-direction:column;gap:.4rem">
               <label
-                style="font-size:.78rem;color:var(--text-dim);white-space:nowrap;font-family:'Cinzel',serif;letter-spacing:.08em">Char
-                Level:</label>
-              <input type="number" id="char-level" placeholder="35" min="1" max="35" value="35"
-                oninput="onCharLevelChange()" style="width:42px;text-align:center">
+                style="font-family:'Cinzel',serif;font-size:.78rem;color:var(--text-dim);white-space:nowrap;letter-spacing:.08em">
+                Weapon Preference:
+              </label>
+              <div style="display:flex;gap:.35rem">
+                <button id="wpref-any" onclick="setWeaponPref('any')" class="tier-btn active">Any</button>
+                <button id="wpref-1h" onclick="setWeaponPref('1h')" class="tier-btn">1H + Shield</button>
+                <button id="wpref-2h" onclick="setWeaponPref('2h')" class="tier-btn">2H Only</button>
+              </div>
+              <p class="note" id="wpref-note" style="font-size:.72rem">Optimizer considers all weapons</p>
+            </div>
+
+            <div style="display:flex;align-items:center">
+              <button class="optimize-btn" onclick="optimizeAndScroll()">⚔ Find Best Loadout ⚔</button>
             </div>
           </div>
-
-          <p class="note" style="font-size:.72rem">Gear level range · Char level used for formula scoring</p>
         </div>
-
-        <div id="no2h-wrap" style="display:none;flex-direction:column;gap:.4rem">
-          <label
-            style="font-family:'Cinzel',serif;font-size:.78rem;color:var(--text-dim);white-space:nowrap;letter-spacing:.08em">Weapon
-            Preference:</label>
-          <div style="display:flex;gap:.35rem">
-            <button id="wpref-any" onclick="setWeaponPref('any')" class="tier-btn active">Any</button>
-            <button id="wpref-1h" onclick="setWeaponPref('1h')" class="tier-btn">1H + Shield</button>
-            <button id="wpref-2h" onclick="setWeaponPref('2h')" class="tier-btn">2H Only</button>
-          </div>
-          <p class="note" id="wpref-note" style="font-size:.72rem">Optimizer considers all weapons</p>
-        </div>
-
-        <div style="display:flex;align-items:center">
-          <button class="optimize-btn" onclick="optimizeAndScroll()">⚔ Find Best Loadout ⚔</button>
-        </div>
-
       </div>
     </div>
 
@@ -168,8 +177,9 @@
         <div class="panel-body">
           <div class="filter-bar">
             <label>Search:</label>
-            <input type="text" id="filter-name" placeholder="Name…" oninput="renderGearList()" style="max-width:180px">
-            <select id="filter-slot" onchange="renderGearList()" style="max-width:140px">
+            <input type="text" id="filter-name" placeholder="Name…" oninput="filterAndRenderGearList()" style="max-width:180px">
+          
+            <select id="filter-slot" onchange="filterAndRenderGearList()" style="max-width:140px">
               <option value="">All Slots</option>
               <option>Head</option>
               <option>Neck</option>
@@ -187,9 +197,20 @@
               <option>Aura</option>
               <option>Charm</option>
             </select>
+          
+            <select id="filter-class" onchange="filterAndRenderGearList()" style="max-width:140px">
+              <option value="">All Classes</option>
+              <option>Windblade</option>
+              <option>Paladin</option>
+              <option>Reaver</option>
+              <option>Druid</option>
+              <option>Stormcaller</option>
+              <option>Arcanist</option>
+            </select>
+          
             <button class="btn btn-ghost"
               style="font-size:.7rem;padding:.25rem .7rem;color:var(--red-light);border-color:var(--red)"
-              onclick="clearAllGear();event.stopPropagation()">Clear All</button>
+              onclick="clearAllFilters();event.stopPropagation()">Clear All</button>
           </div>
         </div>
         <div class="gear-list" id="gear-list"></div>
@@ -198,12 +219,21 @@
 
   </div>
 
-  <script src="gear-data.js"></script>
-  <script src="AbilityData.js"></script>
-  <script src="StatsEngine.js"></script>
-  <script src="DamageCalcEngine.js"></script>
-  <script src="uiRenderer.js"></script>
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
+  <!-- Slot Selection Modal -->
+  <div id="slot-modal" class="slot-modal-backdrop" style="display:none;">
+    <div class="slot-modal">
+      <div class="slot-modal-header">
+        <span class="slot-modal-title" id="slot-modal-title">Select Item</span>
+        <button class="slot-modal-close" id="slot-modal-close">&times;</button>
+      </div>
+      <div class="slot-modal-search">
+        <input type="text" id="slot-modal-search" placeholder="Search items...">
+      </div>
+      <div class="slot-modal-results" id="slot-modal-results"></div>
+    </div>
+  </div>
+
 </body>
 
 </html>
